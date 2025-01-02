@@ -26,7 +26,6 @@ PACKAGES="$PACKAGES luci-app-ddns-go"
 PACKAGES="$PACKAGES mosdns"
 PACKAGES="$PACKAGES luci-app-netdata"
 PACKAGES="$PACKAGES luci-i18n-zerotier-zh-cn"
-PACKAGES="$PACKAGES luci-i18n-socat-zh-cn"
 PACKAGES="$PACKAGES luci-i18n-ddns-zh-cn"
 PACKAGES="$PACKAGES luci-i18n-appfilter-zh-cn"
 
