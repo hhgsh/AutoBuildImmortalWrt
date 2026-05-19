@@ -60,6 +60,11 @@ PACKAGES="$PACKAGES luci-app-netdata"
 PACKAGES="$PACKAGES luci-i18n-zerotier-zh-cn"
 PACKAGES="$PACKAGES luci-i18n-ddns-zh-cn"
 PACKAGES="$PACKAGES luci-theme-kucat"
+PACKAGES="$PACKAGES luci-app-kucat-config"
+PACKAGES="$PACKAGES luci-app-poweroffdevice"
+PACKAGES="$PACKAGES luci-app-watchdog"
+PACKAGES="$PACKAGES luci-app-advancedplus"
+PACKAGES="$PACKAGES luci-app-parentcontrol"
 
 # 文件管理器
 PACKAGES="$PACKAGES luci-i18n-filemanager-zh-cn"
