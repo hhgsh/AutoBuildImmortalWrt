@@ -58,7 +58,6 @@ PACKAGES="$PACKAGES luci-i18n-ttyd-zh-cn"
 PACKAGES="$PACKAGES openssh-sftp-server"
 PACKAGES="$PACKAGES luci-app-netdata"
 PACKAGES="$PACKAGES luci-i18n-zerotier-zh-cn"
-PACKAGES="$PACKAGES luci-i18n-socat-zh-cn"
 PACKAGES="$PACKAGES luci-i18n-ddns-zh-cn"
 PACKAGES="$PACKAGES luci-theme-kucat"
 
