@@ -61,6 +61,7 @@ PACKAGES="$PACKAGES luci-i18n-zerotier-zh-cn"
 PACKAGES="$PACKAGES luci-i18n-ddns-zh-cn"
 PACKAGES="$PACKAGES luci-theme-kucat"
 PACKAGES="$PACKAGES luci-app-watchdog"
+PACKAGES="$PACKAGES luci-i18n-nikki-zh-cn"
 
 
 # 文件管理器
