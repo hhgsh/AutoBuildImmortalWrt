@@ -57,17 +57,6 @@ PACKAGES="$PACKAGES xray-core hysteria luci-i18n-passwall-zh-cn"
 PACKAGES="$PACKAGES luci-i18n-package-manager-zh-cn"
 PACKAGES="$PACKAGES luci-i18n-ttyd-zh-cn"
 PACKAGES="$PACKAGES openssh-sftp-server"
-PACKAGES="$PACKAGES luci-app-netdata"
-PACKAGES="$PACKAGES luci-i18n-zerotier-zh-cn"
-PACKAGES="$PACKAGES luci-i18n-ddns-zh-cn"
-PACKAGES="$PACKAGES luci-theme-kucat"
-PACKAGES="$PACKAGES luci-app-watchdog"
-PACKAGES="$PACKAGES luci-i18n-nikki-zh-cn"
-PACKAGES="$PACKAGES luci-app-bandix"
-PACKAGES="$PACKAGES luci-app-netwizard"
-PACKAGES="$PACKAGES luci-app-mosdns"
-PACKAGES="$PACKAGES luci-app-uninstall"
-
 
 # 文件管理器
 PACKAGES="$PACKAGES luci-i18n-filemanager-zh-cn"
