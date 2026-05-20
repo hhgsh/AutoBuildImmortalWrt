@@ -63,6 +63,11 @@ PACKAGES="$PACKAGES luci-i18n-ddns-zh-cn"
 PACKAGES="$PACKAGES luci-theme-kucat"
 PACKAGES="$PACKAGES luci-app-watchdog"
 PACKAGES="$PACKAGES luci-i18n-nikki-zh-cn"
+PACKAGES="$PACKAGES luci-app-bandix"
+PACKAGES="$PACKAGES luci-app-netwizard"
+PACKAGES="$PACKAGES luci-app-advancedplus"
+PACKAGES="$PACKAGES luci-app-mosdns"
+PACKAGES="$PACKAGES luci-app-uninstall"
 
 
 # 文件管理器
