@@ -67,19 +67,29 @@ case "$board_name" in
         ;;
 esac
 
+# 获取后台管理地址的通用逻辑
+IP_VALUE_FILE="/etc/config/custom_router_ip.txt"
+if [ -f "$IP_VALUE_FILE" ]; then
+    TARGET_IP=$(cat "$IP_VALUE_FILE")
+    echo "Custom router IP detected: $TARGET_IP" >> $LOGFILE
+else
+    TARGET_IP="192.168.0.31"
+    echo "Using default router IP: 192.168.0.31" >> $LOGFILE
+fi
+
 # 3. 配置网络
 if [ "$count" -eq 1 ]; then
-    # 【单网口设备】，DHCP模式
-    uci set network.lan.proto='dhcp'
+    # 【单网口设备】，改为静态 IP 模式（主/旁路由模式）
+    uci set network.lan.proto='static'
     uci set network.lan.device="$lan_ifnames"
-    uci delete network.lan.ipaddr
-    uci delete network.lan.netmask
-    uci delete network.lan.gateway
-    uci delete network.lan.dns
-    # 清理可能残留的 wan 接口
+    uci set network.lan.ipaddr="$TARGET_IP"
+    uci set network.lan.netmask='255.255.255.0'
+    
+    # 清理可能残留的 wan 接口，防止单网口时接口死锁或打红叉
     uci delete network.wan
     uci delete network.wan6
     uci commit network
+    echo "Single port network configured to static IP: $TARGET_IP" >>$LOGFILE
 else
     # 【多网口设备配置】
     # 配置WAN
@@ -114,18 +124,8 @@ else
     # LAN口设置静态IP
     uci set network.lan.proto='static'
     uci set network.lan.device='br-lan'
+    uci set network.lan.ipaddr="$TARGET_IP"
     uci set network.lan.netmask='255.255.255.0'
-    
-    # 设置路由器管理后台地址
-    IP_VALUE_FILE="/etc/config/custom_router_ip.txt"
-    if [ -f "$IP_VALUE_FILE" ]; then
-        CUSTOM_IP=$(cat "$IP_VALUE_FILE")
-        uci set network.lan.ipaddr=$CUSTOM_IP
-        echo "custom router ip is $CUSTOM_IP" >> $LOGFILE
-    else
-        uci set network.lan.ipaddr='192.168.0.31'
-        echo "default router ip is 192.168.0.31" >> $LOGFILE
-    fi
 
     # PPPoE设置
     echo "enable_pppoe value: $enable_pppoe" >>$LOGFILE
