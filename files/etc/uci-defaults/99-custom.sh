@@ -23,15 +23,17 @@ else
     . "$SETTINGS_FILE"
 fi
 
-# 1. 先获取所有物理接口列表
+# 1. 先获取所有物理接口列表并进行严格排序
 ifnames=""
 for iface in /sys/class/net/*; do
     iface_name=$(basename "$iface")
-    if [ -e "$iface/device" ] && echo "$iface_name" | grep -Eq '^eth|^en'; then
+    # 匹配 eth、en、p(PCIe网卡命名) 开头的物理网口
+    if [ -e "$iface/device" ] && echo "$iface_name" | grep -Eq '^eth|^en|^p'; then
         ifnames="$ifnames $iface_name"
     fi
 done
-ifnames=$(echo "$ifnames" | awk '{$1=$1};1')
+# 核心：将网口名单转换为换行、排序、再转回单行空格分隔，确保顺序绝对正确
+ifnames=$(echo "$ifnames" | tr ' ' '\n' | sort | grep -v '^$' | tr '\n' ' ' | sed 's/ $//')
 
 count=$(echo "$ifnames" | wc -w)
 echo "Detected physical interfaces: $ifnames" >>$LOGFILE
@@ -43,6 +45,7 @@ echo "Board detected: $board_name" >>$LOGFILE
 
 wan_ifname=""
 lan_ifnames=""
+
 # 此处特殊处理个别开发板网口顺序问题
 case "$board_name" in
     "radxa,e20c"|"friendlyarm,nanopi-r5c")
@@ -51,24 +54,34 @@ case "$board_name" in
         echo "Using $board_name mapping: WAN=$wan_ifname LAN=$lan_ifnames" >>"$LOGFILE"
         ;;
     *)
-        # 默认第一个接口为WAN，其余为LAN
-        wan_ifname=$(echo "$ifnames" | awk '{print $1}')
-        lan_ifnames=$(echo "$ifnames" | cut -d ' ' -f2-)
-        echo "Using default mapping: WAN=$wan_ifname LAN=$lan_ifnames" >>"$LOGFILE"
+        if [ "$count" -eq 1 ]; then
+            wan_ifname=""
+            lan_ifnames=$(echo "$ifnames" | awk '{print $1}')
+            echo "Single port detected: LAN=$lan_ifnames" >>"$LOGFILE"
+        else
+            # 多网口：最后一个作为 WAN，其余所有网口列在前面作为 LAN
+            wan_ifname=$(echo "$ifnames" | awk '{print $NF}')
+            lan_ifnames=$(echo "$ifnames" | awk "{\$(NF)=\"\"; print \$0}" | sed 's/ $//')
+            echo "Multi port detected: WAN=$wan_ifname LAN=$lan_ifnames" >>"$LOGFILE"
+        fi
         ;;
 esac
 
 # 3. 配置网络
 if [ "$count" -eq 1 ]; then
-    # 单网口设备，DHCP模式
+    # 【单网口设备】，DHCP模式
     uci set network.lan.proto='dhcp'
+    uci set network.lan.device="$lan_ifnames"
     uci delete network.lan.ipaddr
     uci delete network.lan.netmask
     uci delete network.lan.gateway
     uci delete network.lan.dns
+    # 清理可能残留的 wan 接口
+    uci delete network.wan
+    uci delete network.wan6
     uci commit network
-elif [ "$count" -gt 1 ]; then
-    # 多网口设备配置
+else
+    # 【多网口设备配置】
     # 配置WAN
     uci set network.wan=interface
     uci set network.wan.device="$wan_ifname"
@@ -79,29 +92,34 @@ elif [ "$count" -gt 1 ]; then
     uci set network.wan6.device="$wan_ifname"
     uci set network.wan6.proto='dhcpv6'
 
-    # 查找 br-lan 设备 section
+    # 查找或创建 br-lan 设备
     section=$(uci show network | awk -F '[.=]' '/\.@?device\[\d+\]\.name=.br-lan.$/ {print $2; exit}')
     if [ -z "$section" ]; then
-        echo "error：cannot find device 'br-lan'." >>$LOGFILE
-    else
-        # 删除原有ports
-        uci -q delete "network.$section.ports"
-        # 添加LAN接口端口
-        for port in $lan_ifnames; do
-            uci add_list "network.$section.ports"="$port"
-        done
-        echo "Updated br-lan ports: $lan_ifnames" >>$LOGFILE
+        # 如果找不到 br-lan，动态创建一个
+        section="device_lan"
+        uci set network.device_lan=device
+        uci set network.device_lan.name='br-lan'
+        uci set network.device_lan.type='bridge'
     fi
+
+    # 清空旧的端口绑定，防止原生配置干扰
+    uci -q delete "network.$section.ports"
+    
+    # 【核心动态追加】循环将计算出的所有 LAN 网口按顺序加入到 br-lan 列表中
+    for port in $lan_ifnames; do
+        uci add_list "network.$section.ports"="$port"
+        echo "Adding port $port to br-lan" >>$LOGFILE
+    done
 
     # LAN口设置静态IP
     uci set network.lan.proto='static'
-    # 多网口设备 支持修改为别的管理后台地址 在Github Action 的UI上自行输入即可 
+    uci set network.lan.device='br-lan'
     uci set network.lan.netmask='255.255.255.0'
+    
     # 设置路由器管理后台地址
     IP_VALUE_FILE="/etc/config/custom_router_ip.txt"
     if [ -f "$IP_VALUE_FILE" ]; then
         CUSTOM_IP=$(cat "$IP_VALUE_FILE")
-        # 用户在UI上设置的路由器后台管理地址
         uci set network.lan.ipaddr=$CUSTOM_IP
         echo "custom router ip is $CUSTOM_IP" >> $LOGFILE
     else
@@ -126,6 +144,10 @@ elif [ "$count" -gt 1 ]; then
 
     uci commit network
 fi
+
+# ========================================================
+# 以下为公共系统优化逻辑（无论单网口、多网口都会照常执行）
+# ========================================================
 
 # 设置所有网口可访问网页终端
 uci delete ttyd.@ttyd[0].interface
@@ -167,8 +189,6 @@ if [ -f /usr/bin/quickfile ]; then
 fi
 
 # 若安装了dockerd 则设置docker的防火墙规则
-# 扩大docker涵盖的子网范围 '172.16.0.0/12'
-# 方便各类docker容器的端口顺利通过防火墙 
 if command -v dockerd >/dev/null 2>&1; then
     echo "检测到 Docker，正在配置防火墙规则..."
     FW_FILE="/etc/config/firewall"
@@ -186,7 +206,6 @@ if command -v dockerd >/dev/null 2>&1; then
             uci delete firewall.@forwarding[$idx]
         fi
     done
-    # 提交删除
     uci commit firewall
 
 # 追加新的 zone + forwarding 配置
