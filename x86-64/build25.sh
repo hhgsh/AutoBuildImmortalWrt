@@ -110,6 +110,28 @@ fi
 # 构建镜像
 echo "$(date '+%Y-%m-%d %H:%M:%S') - Building image with the following packages:"
 echo "$PACKAGES"
+# ================== 就在这里插入你的自定义代码 ==================
+# 自动修改 ImageBuilder 释放出的版本配置文件
+release_file="/home/build/immortalwrt/files/etc/openwrt_release"
+mkdir -p /home/build/immortalwrt/files/etc
+
+# 如果官方默认有这个文件，我们就追加后缀；如果没有，就直接生成一个
+if [ -f "target/linux/x86/base-files/etc/openwrt_release" ]; then
+    cp target/linux/x86/base-files/etc/openwrt_release $release_file
+    sed -i "s/DISTRIB_REVISION='\(.*\)'/DISTRIB_REVISION='\1-By-Laohu'/g" $release_file
+    sed -i "s/DISTRIB_DESCRIPTION='\(.*\)'/DISTRIB_DESCRIPTION='\1 (By Laohu)'/g" $release_file
+else
+    # 备用方案：如果找不到源码文件，直接强制写入
+    cat << EOF > $release_file
+DISTRIB_ID='ImmortalWrt'
+DISTRIB_RELEASE='25.12.0'
+DISTRIB_REVISION='r37854-By-Laohu'
+DISTRIB_TARGET='x86/64'
+DISTRIB_ARCH='x86_64'
+DISTRIB_DESCRIPTION='ImmortalWrt 25.12.0 (By Laohu)'
+EOF
+fi
+# ============================================================
 
 make image PROFILE="generic" PACKAGES="$PACKAGES" FILES="/home/build/immortalwrt/files" ROOTFS_PARTSIZE=$PROFILE
 
