@@ -16,7 +16,6 @@ on:
         options:
           - 25.12.1
           - 25.12.0
-          - 25.12-SNAPSHOT
       profile:
         description: '请输入要编译固件大小 单位(MB)'
         required: true
