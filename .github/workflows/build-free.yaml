@@ -52,22 +52,24 @@ jobs:
           luci_version="${{ github.event.inputs.luci_version }}"
           IB_URL="https://downloads.immortalwrt.org/releases/${luci_version}/targets/x86/64/immortalwrt-imagebuilder-${luci_version}-x86-64.Linux-x86_64.tar.zst"
           
-          echo "正在下载 ImageBuilder: ${IB_URL}"
+          echo "正在直接下载官方 ImageBuilder 包: ${IB_URL}"
           wget -q --show-progress "${IB_URL}" -O imagebuilder.tar.zst
           
           mkdir -p /tmp/immortalwrt
           tar -I zstd -xf imagebuilder.tar.zst -C /tmp/immortalwrt --strip-components=1
           echo "IMAGEBUILDER_DIR=/tmp/immortalwrt" >> $GITHUB_ENV
 
-      - name: Add Custom Repositories to ImageBuilder
+      - name: Setup Custom Repositories & Packages Directory
         run: |
           cd $IMAGEBUILDER_DIR
           
-          # 追加第三方软件源 (以悟空每日更新的第三方 APK 源为例，如果有其他源可在此替换/添加)
-          echo "src/gz custom_apk https://raw.githubusercontent.com/wukongdaily/apk/master/x86_64" >> repositories.conf
+          # 1. 自动向 repositories.conf 补全第三方 APK 镜像源
+          echo "src/gz wukong_apk https://raw.githubusercontent.com/wukongdaily/apk/master/x86_64" >> repositories.conf
           
-          # 如果你的仓库下 shell/apk-custom-packages.sh 中有源地址定义，也会生效
-          echo "=== 写入后的 repositories.conf 内容 ==="
+          # 2. 建立 packages 目录，用于存放通过脚本克隆/下载的本地 .apk 依赖
+          mkdir -p packages/
+          
+          echo "=== 写入后的 repositories.conf 源列表 ==="
           cat repositories.conf
 
       - name: Load APK Custom Packages
@@ -76,17 +78,17 @@ jobs:
           APK_SCRIPT="${{ github.workspace }}/shell/apk-custom-packages.sh"
           
           if [ -f "$APK_SCRIPT" ]; then
-            echo "载入自定义 APK 脚本..."
+            echo "正在载入 shell/apk-custom-packages.sh..."
             source "$APK_SCRIPT"
             echo "CUSTOM_PACKAGES=$CUSTOM_PACKAGES" >> $GITHUB_ENV
-            echo "当前 CUSTOM_PACKAGES: $CUSTOM_PACKAGES"
+            echo "读取到自定义插件: $CUSTOM_PACKAGES"
           fi
 
       - name: Build Firmware with build25.sh
         run: |
           cd $IMAGEBUILDER_DIR
           
-          # 复制配置文件及自定义文件
+          # 拷贝自定义配置文件与文件目录
           mkdir -p bin files files/etc/config
           [ -d "${{ github.workspace }}/files" ] && cp -rf ${{ github.workspace }}/files/* files/ 2>/dev/null || true
           [ -d "${{ github.workspace }}/custom" ] && cp -rf ${{ github.workspace }}/custom/* files/etc/config/ 2>/dev/null || true
@@ -98,13 +100,13 @@ jobs:
           
           BUILD_SCRIPT="${{ github.workspace }}/x86-64/build25.sh"
           if [ -f "$BUILD_SCRIPT" ]; then
-            echo "正在运行 x86-64/build25.sh..."
+            echo "正在运行 x86-64/build25.sh 进行打包..."
             bash "$BUILD_SCRIPT"
           else
             make image PROFILE="generic" PACKAGES="$CUSTOM_PACKAGES"
           fi
           
-          # 收集生成的固件文件
+          # 筛选输出组合固件文件
           mkdir -p ${{ github.workspace }}/release_bin
           find bin/targets/x86/64/ -type f -name "*squashfs-combined-efi.img.gz" -exec cp -f {} ${{ github.workspace }}/release_bin/ \;
 
