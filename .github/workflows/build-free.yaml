@@ -59,42 +59,50 @@ jobs:
           tar -I zstd -xf imagebuilder.tar.zst -C /tmp/immortalwrt --strip-components=1
           echo "IMAGEBUILDER_DIR=/tmp/immortalwrt" >> $GITHUB_ENV
 
-      - name: Execute APK Custom Script
+      - name: Load & Export APK Custom Packages
         run: |
           cd $IMAGEBUILDER_DIR
           APK_SCRIPT="${{ github.workspace }}/shell/apk-custom-packages.sh"
           if [ -f "$APK_SCRIPT" ]; then
-            echo "正在运行 shell/apk-custom-packages.sh 集成自定义 APK 包..."
-            bash "$APK_SCRIPT"
+            echo "正在载入 shell/apk-custom-packages.sh ..."
+            # 1. 使用 source 方式加载，保证变量不因子 Shell 退出而丢失
+            source "$APK_SCRIPT"
+            
+            # 2. 将 CUSTOM_PACKAGES 写入 GITHUB_ENV 传递给后面的步骤
+            echo "CUSTOM_PACKAGES=$CUSTOM_PACKAGES" >> $GITHUB_ENV
+            echo "========================================="
+            echo "已成功读取到以下自定义 APK 插件:"
+            echo "$CUSTOM_PACKAGES"
+            echo "========================================="
           else
-            echo "未找到 shell/apk-custom-packages.sh，跳过执行。"
+            echo "未找到 shell/apk-custom-packages.sh，跳过此步骤。"
           fi
 
       - name: Build Firmware with build25.sh
         run: |
           cd $IMAGEBUILDER_DIR
           
-          # 1. 复制自定义配置文件与 custom 目录到 ImageBuilder 根目录下
+          # 拷贝文件与配置
           mkdir -p bin files files/etc/config
           [ -d "${{ github.workspace }}/files" ] && cp -rf ${{ github.workspace }}/files/* files/ 2>/dev/null || true
           [ -d "${{ github.workspace }}/custom" ] && cp -rf ${{ github.workspace }}/custom/* files/etc/config/ 2>/dev/null || true
           [ -f "${{ github.workspace }}/x86-64/imm25.config" ] && cp -f ${{ github.workspace }}/x86-64/imm25.config .config
           
-          # 2. 设置环境变量传给 build25.sh 脚本
+          # 显式导出环境变量供 build25.sh 或 make 使用
           export PROFILE="${{ github.event.inputs.profile }}"
           export CUSTOM_ROUTER_IP="${{ github.event.inputs.custom_router_ip }}"
+          export CUSTOM_PACKAGES="${CUSTOM_PACKAGES}"
           
-          # 3. 优先执行 x86-64/build25.sh 进行选定插件的打包
           BUILD_SCRIPT="${{ github.workspace }}/x86-64/build25.sh"
           if [ -f "$BUILD_SCRIPT" ]; then
-            echo "正在运行 x86-64/build25.sh 打包选定插件与固件..."
+            echo "正在运行 x86-64/build25.sh 进行固件打包..."
             bash "$BUILD_SCRIPT"
           else
-            echo "未找到 build25.sh，降级执行默认 make image"
-            make image PROFILE="generic"
+            echo "未找到 build25.sh，降级直接运行 make image..."
+            make image PROFILE="generic" PACKAGES="$CUSTOM_PACKAGES"
           fi
           
-          # 4. 收集编译生成的 SquashFS Combined EFI 固件
+          # 提取打好的 squashfs-combined-efi 固件
           mkdir -p ${{ github.workspace }}/release_bin
           find bin/targets/x86/64/ -type f -name "*squashfs-combined-efi.img.gz" -exec cp -f {} ${{ github.workspace }}/release_bin/ \;
 
