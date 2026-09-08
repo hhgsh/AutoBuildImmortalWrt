@@ -1,0 +1,119 @@
+name: Build ImmortalWrt-x86-64-efi 25.12.x (Direct ImageBuilder)
+
+on:
+  workflow_dispatch:
+    inputs:
+      luci_version:
+        description: "选择 ImmortalWrt/LuCI 版本"
+        required: false
+        default: "25.12.2"
+        type: choice
+        options:
+          - 25.12.1
+          - 25.12.2
+      profile:
+        description: "选择预设配置 (PROFILE)"
+        required: false
+        default: "generic"
+        type: string
+      include_docker:
+        description: "是否集成 Docker 依赖"
+        required: false
+        default: "true"
+        type: boolean
+      custom_router_ip:
+        description: "请设置路由器的管理地址(仅对多网口路由器有效) 格式:192.168.x.1 或 10.x.x.1"
+        required: true
+        default: "192.168.0.31"
+      profile:
+        description: '请输入要编译固件大小 单位(MB)'
+        required: true
+        default: '2048'
+      include_docker:
+        description: |
+          是否编译 Docker 插件
+        required: true
+        default: 'no'
+        type: choice
+        options:
+          - 'yes'
+          - 'no'
+      enable_pppoe:
+        description: "是否配置PPPoE拨号信息?"
+        required: true
+        default: 'no'
+        type: choice
+        options:
+        - 'yes'
+        - 'no'
+      pppoe_account:
+        description: "宽带账号 (若启用PPPoE)"
+        required: false
+      pppoe_password:
+        description: "宽带密码 (若启用PPPoE)"
+        required: false
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Free disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /usr/local/share/powershell
+          sudo apt-get clean
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential libncurses5-dev libncursesw5-dev \
+            zlib1g-dev gawk git gettext libssl-dev xsltproc rsync u-boot-tools zstd wget
+
+      - name: Download and Extract ImageBuilder
+        run: |
+          VERSION="${{ github.event.inputs.luci_version }}"
+          IB_URL="https://downloads.immortalwrt.org/releases/${VERSION}/targets/x86/64/immortalwrt-imagebuilder-${VERSION}-x86-64.Linux-x86_64.tar.zst"
+          
+          echo "Downloading ImageBuilder from: ${IB_URL}"
+          wget -q --show-progress "${IB_URL}" -O imagebuilder.tar.zst
+          
+          mkdir -p ib_dir
+          tar -I zstd -xf imagebuilder.tar.zst -C ib_dir --strip-components=1
+          echo "IMAGEBUILDER_DIR=$(pwd)/ib_dir" >> $GITHUB_ENV
+
+      - name: Build Firmware
+        run: |
+          cd $IMAGEBUILDER_DIR
+          
+          # 拷贝项目中的配置文件与定制脚本到 ImageBuilder 根目录
+          if [ -f "${{ github.workspace }}/x86-64/imm25.config" ]; then
+            cp -f "${{ github.workspace }}/x86-64/imm25.config" .config
+          fi
+          
+          # 执行编译/自定义脚本
+          if [ -f "${{ github.workspace }}/x86-64/build25.sh" ]; then
+            bash "${{ github.workspace }}/x86-64/build25.sh"
+          else
+            echo "build25.sh 未找到，使用默认 make image 构建"
+            make image PROFILE="generic"
+          fi
+
+      - name: Organize output files
+        run: |
+          cd $IMAGEBUILDER_DIR
+          mkdir -p ${{ github.workspace }}/firmware
+          if [ -d "bin/targets/x86/64" ]; then
+            cp -rf bin/targets/x86/64/* ${{ github.workspace }}/firmware/
+          fi
+
+      - name: Upload Firmware to Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ImmortalWrt-x86-64-${{ github.event.inputs.luci_version }}
+          path: ${{ github.workspace }}/firmware/
