@@ -19,30 +19,6 @@ on:
         description: "固件大小 (MB)"
         required: true
         default: "2048"
-      include_docker:
-        description: "是否编译 Docker 插件"
-        required: true
-        default: "no"
-        type: choice
-        options:
-          - "yes"
-          - "no"
-      enable_pppoe:
-        description: "是否配置PPPoE拨号"
-        required: true
-        default: "no"
-        type: choice
-        options:
-          - "yes"
-          - "no"
-      pppoe_account:
-        description: "宽带账号"
-        required: false
-        default: ""
-      pppoe_password:
-        description: "宽带密码"
-        required: false
-        default: ""
 
 permissions:
   contents: write
@@ -71,9 +47,10 @@ jobs:
           sudo apt-get install -y build-essential libncurses5-dev libncursesw5-dev \
             zlib1g-dev gawk git gettext libssl-dev xsltproc rsync u-boot-tools zstd wget
 
-      - name: Download and Extract ImmortalWrt 25.12.2 ImageBuilder
+      - name: Download and Extract ImmortalWrt ImageBuilder
         run: |
-          IB_URL="https://downloads.immortalwrt.org/releases/25.12.2/targets/x86/64/immortalwrt-imagebuilder-25.12.2-x86-64.Linux-x86_64.tar.zst"
+          luci_version="${{ github.event.inputs.luci_version }}"
+          IB_URL="https://downloads.immortalwrt.org/releases/${luci_version}/targets/x86/64/immortalwrt-imagebuilder-${luci_version}-x86-64.Linux-x86_64.tar.zst"
           
           echo "Downloading ImageBuilder from: ${IB_URL}"
           wget -q --show-progress "${IB_URL}" -O imagebuilder.tar.zst
@@ -87,37 +64,44 @@ jobs:
           cd $IMAGEBUILDER_DIR
           APK_SCRIPT="${{ github.workspace }}/shell/apk-custom-packages.sh"
           if [ -f "$APK_SCRIPT" ]; then
-            echo "正在运行 shell/apk-custom-packages.sh 进行 APK 配置/依赖集成..."
+            echo "正在运行 shell/apk-custom-packages.sh 集成自定义 APK 包..."
             bash "$APK_SCRIPT"
           else
-            echo "未找到 shell/apk-custom-packages.sh，跳过此步骤。"
+            echo "未找到 shell/apk-custom-packages.sh，跳过执行。"
           fi
 
-      - name: Build ImmortalWrt 25.12.2 Firmware
+      - name: Build Firmware with build25.sh
         run: |
           cd $IMAGEBUILDER_DIR
           
+          # 1. 复制自定义配置文件与 custom 目录到 ImageBuilder 根目录下
           mkdir -p bin files files/etc/config
           [ -d "${{ github.workspace }}/files" ] && cp -rf ${{ github.workspace }}/files/* files/ 2>/dev/null || true
           [ -d "${{ github.workspace }}/custom" ] && cp -rf ${{ github.workspace }}/custom/* files/etc/config/ 2>/dev/null || true
           [ -f "${{ github.workspace }}/x86-64/imm25.config" ] && cp -f ${{ github.workspace }}/x86-64/imm25.config .config
           
+          # 2. 设置环境变量传给 build25.sh 脚本
           export PROFILE="${{ github.event.inputs.profile }}"
+          export CUSTOM_ROUTER_IP="${{ github.event.inputs.custom_router_ip }}"
           
-          if [ -f "${{ github.workspace }}/x86-64/build25.sh" ]; then
-            bash ${{ github.workspace }}/x86-64/build25.sh
+          # 3. 优先执行 x86-64/build25.sh 进行选定插件的打包
+          BUILD_SCRIPT="${{ github.workspace }}/x86-64/build25.sh"
+          if [ -f "$BUILD_SCRIPT" ]; then
+            echo "正在运行 x86-64/build25.sh 打包选定插件与固件..."
+            bash "$BUILD_SCRIPT"
           else
+            echo "未找到 build25.sh，降级执行默认 make image"
             make image PROFILE="generic"
           fi
           
-          # 创建打包输出目录，并只筛选打包 squashfs-combined-efi 版本的固件
+          # 4. 收集编译生成的 SquashFS Combined EFI 固件
           mkdir -p ${{ github.workspace }}/release_bin
           find bin/targets/x86/64/ -type f -name "*squashfs-combined-efi.img.gz" -exec cp -f {} ${{ github.workspace }}/release_bin/ \;
 
       - name: Create Release Info
         run: |
           cat > ${{ github.workspace }}/router-info.md <<EOF
-          ## 📡 ImmortalWrt 25.12.2 固件后台信息
+          ## 📡 ImmortalWrt ${{ github.event.inputs.luci_version }} 固件信息
           - 🏠 **后台地址**: ${{ github.event.inputs.custom_router_ip }}
           - 👤 **用户名**: root
           - 🔑 **密码**: 无
@@ -126,7 +110,7 @@ jobs:
       - name: Upload Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: Laohu-x86-64-25.12.2
+          tag_name: Laohu-x86-64-${{ github.event.inputs.luci_version }}
           body_path: ${{ github.workspace }}/router-info.md
           files: |
             ${{ github.workspace }}/release_bin/*squashfs-combined-efi.img.gz
