@@ -1,57 +1,48 @@
-name: Build ImmortalWrt-x86-64-efi 25.12.x (Direct ImageBuilder)
+name: build-x86-64-immortalwrt-25.12.x
 
 on:
   workflow_dispatch:
     inputs:
       luci_version:
-        description: "选择 ImmortalWrt/LuCI 版本"
+        description: "选择luci版本"
         required: false
         default: "25.12.2"
         type: choice
         options:
-          - 25.12.1
-          - 25.12.2
-      profile:
-        description: "选择预设配置 (PROFILE)"
-        required: false
-        default: "generic"
-        type: string
-      include_docker:
-        description: "是否集成 Docker 依赖"
-        required: false
-        default: "true"
-        type: boolean
+          - "25.12.2"
+          - "25.12.1"
       custom_router_ip:
-        description: "请设置路由器的管理地址(仅对多网口路由器有效) 格式:192.168.x.1 或 10.x.x.1"
+        description: "设置路由器管理地址"
         required: true
         default: "192.168.0.31"
       profile:
-        description: '请输入要编译固件大小 单位(MB)'
+        description: "固件大小 (MB)"
         required: true
-        default: '2048'
+        default: "2048"
       include_docker:
-        description: |
-          是否编译 Docker 插件
+        description: "是否编译 Docker 插件"
         required: true
-        default: 'no'
+        default: "no"
         type: choice
         options:
-          - 'yes'
-          - 'no'
+          - "yes"
+          - "no"
       enable_pppoe:
-        description: "是否配置PPPoE拨号信息?"
+        description: "是否配置PPPoE拨号"
         required: true
-        default: 'no'
+        default: "no"
         type: choice
         options:
-        - 'yes'
-        - 'no'
+          - "yes"
+          - "no"
       pppoe_account:
-        description: "宽带账号 (若启用PPPoE)"
+        description: "宽带账号"
         required: false
+        default: ""
       pppoe_password:
-        description: "宽带密码 (若启用PPPoE)"
+        description: "宽带密码"
         required: false
+        default: ""
 
 permissions:
   contents: write
@@ -61,13 +52,19 @@ jobs:
     runs-on: ubuntu-22.04
 
     steps:
-      - name: Checkout repository
+      - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Free disk space
+      - name: Set executable permissions
         run: |
-          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /usr/local/share/powershell
-          sudo apt-get clean
+          if [ -f "${{ github.workspace }}/x86-64/build25.sh" ]; then
+            chmod +x ${{ github.workspace }}/x86-64/build25.sh
+          fi
+
+      - name: Save Custom Router IP
+        run: |
+          mkdir -p "${{ github.workspace }}/custom"
+          echo "${{ github.event.inputs.custom_router_ip }}" > "${{ github.workspace }}/custom/custom_router_ip.txt"
 
       - name: Install build dependencies
         run: |
@@ -75,45 +72,54 @@ jobs:
           sudo apt-get install -y build-essential libncurses5-dev libncursesw5-dev \
             zlib1g-dev gawk git gettext libssl-dev xsltproc rsync u-boot-tools zstd wget
 
-      - name: Download and Extract ImageBuilder
+      - name: Download and Extract ImmortalWrt ImageBuilder
         run: |
-          VERSION="${{ github.event.inputs.luci_version }}"
-          IB_URL="https://downloads.immortalwrt.org/releases/${VERSION}/targets/x86/64/immortalwrt-imagebuilder-${VERSION}-x86-64.Linux-x86_64.tar.zst"
+          luci_version="${{ github.event.inputs.luci_version }}"
+          IB_URL="https://downloads.immortalwrt.org/releases/${luci_version}/targets/x86/64/immortalwrt-imagebuilder-${luci_version}-x86-64.Linux-x86_64.tar.zst"
           
           echo "Downloading ImageBuilder from: ${IB_URL}"
           wget -q --show-progress "${IB_URL}" -O imagebuilder.tar.zst
           
-          mkdir -p ib_dir
-          tar -I zstd -xf imagebuilder.tar.zst -C ib_dir --strip-components=1
-          echo "IMAGEBUILDER_DIR=$(pwd)/ib_dir" >> $GITHUB_ENV
+          mkdir -p /tmp/immortalwrt
+          tar -I zstd -xf imagebuilder.tar.zst -C /tmp/immortalwrt --strip-components=1
+          echo "IMAGEBUILDER_DIR=/tmp/immortalwrt" >> $GITHUB_ENV
 
-      - name: Build Firmware
+      - name: Build ImmortalWrt Firmware
         run: |
           cd $IMAGEBUILDER_DIR
           
-          # 拷贝项目中的配置文件与定制脚本到 ImageBuilder 根目录
-          if [ -f "${{ github.workspace }}/x86-64/imm25.config" ]; then
-            cp -f "${{ github.workspace }}/x86-64/imm25.config" .config
-          fi
+          mkdir -p bin files files/etc/config
+          [ -d "${{ github.workspace }}/files" ] && cp -rf ${{ github.workspace }}/files/* files/ 2>/dev/null || true
+          [ -d "${{ github.workspace }}/custom" ] && cp -rf ${{ github.workspace }}/custom/* files/etc/config/ 2>/dev/null || true
+          [ -f "${{ github.workspace }}/x86-64/imm25.config" ] && cp -f ${{ github.workspace }}/x86-64/imm25.config .config
           
-          # 执行编译/自定义脚本
+          export PROFILE="${{ github.event.inputs.profile }}"
+          export INCLUDE_DOCKER="${{ github.event.inputs.include_docker }}"
+          
           if [ -f "${{ github.workspace }}/x86-64/build25.sh" ]; then
-            bash "${{ github.workspace }}/x86-64/build25.sh"
+            bash ${{ github.workspace }}/x86-64/build25.sh
           else
-            echo "build25.sh 未找到，使用默认 make image 构建"
-            make image PROFILE="generic"
+            make image
           fi
+          
+          mkdir -p ${{ github.workspace }}/bin/targets/x86/64
+          [ -d "bin/targets/x86/64" ] && cp -rf bin/targets/x86/64/* ${{ github.workspace }}/bin/targets/x86/64/ 2>/dev/null || true
 
-      - name: Organize output files
+      - name: Create Release Info
         run: |
-          cd $IMAGEBUILDER_DIR
-          mkdir -p ${{ github.workspace }}/firmware
-          if [ -d "bin/targets/x86/64" ]; then
-            cp -rf bin/targets/x86/64/* ${{ github.workspace }}/firmware/
-          fi
+          cat > ${{ github.workspace }}/router-info.md <<EOF
+          ## 📡 路由器后台信息
+          - 🏠 **后台地址**: ${{ github.event.inputs.custom_router_ip }}
+          - 👤 **用户名**: root
+          - 🔑 **密码**: 无
+          EOF
 
-      - name: Upload Firmware to Artifacts
-        uses: actions/upload-artifact@v4
+      - name: Upload Release
+        uses: softprops/action-gh-release@v2
         with:
-          name: ImmortalWrt-x86-64-${{ github.event.inputs.luci_version }}
-          path: ${{ github.workspace }}/firmware/
+          tag_name: Laohu-x86-64
+          body_path: ${{ github.workspace }}/router-info.md
+          files: |
+            ${{ github.workspace }}/bin/targets/x86/64/*
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
