@@ -12,13 +12,37 @@ on:
           - "25.12.2"
           - "25.12.1"
       custom_router_ip:
-        description: "路由器管理地址"
+        description: "设置路由器管理地址"
         required: true
         default: "192.168.0.31"
       profile:
         description: "固件大小 (MB)"
         required: true
         default: "2048"
+      include_docker:
+        description: "是否编译 Docker 插件"
+        required: true
+        default: "no"
+        type: choice
+        options:
+          - "yes"
+          - "no"
+      enable_pppoe:
+        description: "是否配置PPPoE拨号"
+        required: true
+        default: "no"
+        type: choice
+        options:
+          - "yes"
+          - "no"
+      pppoe_account:
+        description: "宽带账号"
+        required: false
+        default: ""
+      pppoe_password:
+        description: "宽带密码"
+        required: false
+        default: ""
 
 permissions:
   contents: write
@@ -33,8 +57,9 @@ jobs:
 
       - name: Set executable permissions
         run: |
-          [ -f "${{ github.workspace }}/x86-64/build25.sh" ] && chmod +x ${{ github.workspace }}/x86-64/build25.sh || true
-          [ -f "${{ github.workspace }}/shell/apk-custom-packages.sh" ] && chmod +x ${{ github.workspace }}/shell/apk-custom-packages.sh || true
+          if [ -f "${{ github.workspace }}/x86-64/build25.sh" ]; then
+            chmod +x ${{ github.workspace }}/x86-64/build25.sh
+          fi
 
       - name: Save Custom Router IP
         run: |
@@ -52,68 +77,38 @@ jobs:
           luci_version="${{ github.event.inputs.luci_version }}"
           IB_URL="https://downloads.immortalwrt.org/releases/${luci_version}/targets/x86/64/immortalwrt-imagebuilder-${luci_version}-x86-64.Linux-x86_64.tar.zst"
           
-          echo "正在直接下载官方 ImageBuilder 包: ${IB_URL}"
+          echo "Downloading ImageBuilder from: ${IB_URL}"
           wget -q --show-progress "${IB_URL}" -O imagebuilder.tar.zst
           
           mkdir -p /tmp/immortalwrt
           tar -I zstd -xf imagebuilder.tar.zst -C /tmp/immortalwrt --strip-components=1
           echo "IMAGEBUILDER_DIR=/tmp/immortalwrt" >> $GITHUB_ENV
 
-      - name: Setup Custom Repositories & Packages Directory
+      - name: Build ImmortalWrt Firmware
         run: |
           cd $IMAGEBUILDER_DIR
           
-          # 1. 自动向 repositories.conf 补全第三方 APK 镜像源
-          echo "src/gz wukong_apk https://raw.githubusercontent.com/wukongdaily/apk/master/x86_64" >> repositories.conf
-          
-          # 2. 建立 packages 目录，用于存放通过脚本克隆/下载的本地 .apk 依赖
-          mkdir -p packages/
-          
-          echo "=== 写入后的 repositories.conf 源列表 ==="
-          cat repositories.conf
-
-      - name: Load APK Custom Packages
-        run: |
-          cd $IMAGEBUILDER_DIR
-          APK_SCRIPT="${{ github.workspace }}/shell/apk-custom-packages.sh"
-          
-          if [ -f "$APK_SCRIPT" ]; then
-            echo "正在载入 shell/apk-custom-packages.sh..."
-            source "$APK_SCRIPT"
-            echo "CUSTOM_PACKAGES=$CUSTOM_PACKAGES" >> $GITHUB_ENV
-            echo "读取到自定义插件: $CUSTOM_PACKAGES"
-          fi
-
-      - name: Build Firmware with build25.sh
-        run: |
-          cd $IMAGEBUILDER_DIR
-          
-          # 拷贝自定义配置文件与文件目录
           mkdir -p bin files files/etc/config
           [ -d "${{ github.workspace }}/files" ] && cp -rf ${{ github.workspace }}/files/* files/ 2>/dev/null || true
           [ -d "${{ github.workspace }}/custom" ] && cp -rf ${{ github.workspace }}/custom/* files/etc/config/ 2>/dev/null || true
           [ -f "${{ github.workspace }}/x86-64/imm25.config" ] && cp -f ${{ github.workspace }}/x86-64/imm25.config .config
           
           export PROFILE="${{ github.event.inputs.profile }}"
-          export CUSTOM_ROUTER_IP="${{ github.event.inputs.custom_router_ip }}"
-          export CUSTOM_PACKAGES="${CUSTOM_PACKAGES}"
+          export INCLUDE_DOCKER="${{ github.event.inputs.include_docker }}"
           
-          BUILD_SCRIPT="${{ github.workspace }}/x86-64/build25.sh"
-          if [ -f "$BUILD_SCRIPT" ]; then
-            echo "正在运行 x86-64/build25.sh 进行打包..."
-            bash "$BUILD_SCRIPT"
+          if [ -f "${{ github.workspace }}/x86-64/build25.sh" ]; then
+            bash ${{ github.workspace }}/x86-64/build25.sh
           else
-            make image PROFILE="generic" PACKAGES="$CUSTOM_PACKAGES"
+            make image
           fi
           
-          # 筛选输出组合固件文件
-          mkdir -p ${{ github.workspace }}/release_bin
-          find bin/targets/x86/64/ -type f -name "*squashfs-combined-efi.img.gz" -exec cp -f {} ${{ github.workspace }}/release_bin/ \;
+          mkdir -p ${{ github.workspace }}/bin/targets/x86/64
+          [ -d "bin/targets/x86/64" ] && cp -rf bin/targets/x86/64/* ${{ github.workspace }}/bin/targets/x86/64/ 2>/dev/null || true
 
       - name: Create Release Info
         run: |
           cat > ${{ github.workspace }}/router-info.md <<EOF
-          ## 📡 ImmortalWrt ${{ github.event.inputs.luci_version }} 固件信息
+          ## 📡 路由器后台信息
           - 🏠 **后台地址**: ${{ github.event.inputs.custom_router_ip }}
           - 👤 **用户名**: root
           - 🔑 **密码**: 无
@@ -122,9 +117,9 @@ jobs:
       - name: Upload Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: Laohu-x86-64-${{ github.event.inputs.luci_version }}
+          tag_name: Laohu-x86-64
           body_path: ${{ github.workspace }}/router-info.md
           files: |
-            ${{ github.workspace }}/release_bin/*squashfs-combined-efi.img.gz
+            ${{ github.workspace }}/bin/targets/x86/64/*
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
