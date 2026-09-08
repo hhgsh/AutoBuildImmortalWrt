@@ -78,31 +78,26 @@ jobs:
             echo "未找到 shell/apk-custom-packages.sh，跳过此步骤。"
           fi
 
-      - name: Build Firmware with build25.sh
+      - name: Build ImmortalWrt with Docker Container
         run: |
-          cd $IMAGEBUILDER_DIR
-          
-          # 拷贝文件与配置
-          mkdir -p bin files files/etc/config
-          [ -d "${{ github.workspace }}/files" ] && cp -rf ${{ github.workspace }}/files/* files/ 2>/dev/null || true
-          [ -d "${{ github.workspace }}/custom" ] && cp -rf ${{ github.workspace }}/custom/* files/etc/config/ 2>/dev/null || true
-          [ -f "${{ github.workspace }}/x86-64/imm25.config" ] && cp -f ${{ github.workspace }}/x86-64/imm25.config .config
-          
-          # 显式导出环境变量供 build25.sh 或 make 使用
-          export PROFILE="${{ github.event.inputs.profile }}"
-          export CUSTOM_ROUTER_IP="${{ github.event.inputs.custom_router_ip }}"
-          export CUSTOM_PACKAGES="${CUSTOM_PACKAGES}"
-          
-          BUILD_SCRIPT="${{ github.workspace }}/x86-64/build25.sh"
-          if [ -f "$BUILD_SCRIPT" ]; then
-            echo "正在运行 x86-64/build25.sh 进行固件打包..."
-            bash "$BUILD_SCRIPT"
-          else
-            echo "未找到 build25.sh，降级直接运行 make image..."
-            make image PROFILE="generic" PACKAGES="$CUSTOM_PACKAGES"
-          fi
-          
-          # 提取打好的 squashfs-combined-efi 固件
+          # 传递并绑定参数
+          PROFILE="${{ github.event.inputs.profile }}"
+          CUSTOM_ROUTER_IP="${{ github.event.inputs.custom_router_ip }}"
+          LUCI_VERSION="${{ github.event.inputs.luci_version }}"
+
+          docker run --rm -i \
+            --user root \
+            -v "${{ github.workspace }}/bin:/home/build/immortalwrt/bin" \
+            -v "${{ github.workspace }}/files:/home/build/immortalwrt/files" \
+            -v "${{ github.workspace }}/custom:/home/build/immortalwrt/files/etc/config" \
+            -v "${{ github.workspace }}/x86-64/imm25.config:/home/build/immortalwrt/.config" \
+            -v "${{ github.workspace }}/shell:/home/build/immortalwrt/shell" \
+            -v "${{ github.workspace }}/x86-64/build25.sh:/home/build/immortalwrt/build.sh" \
+            -e PROFILE="$PROFILE" \
+            -e CUSTOM_ROUTER_IP="$CUSTOM_ROUTER_IP" \
+            immortalwrt/imagebuilder:x86-64-openwrt-${LUCI_VERSION} /bin/bash /home/build/immortalwrt/build.sh
+
+          # 收集生成的固件
           mkdir -p ${{ github.workspace }}/release_bin
           find bin/targets/x86/64/ -type f -name "*squashfs-combined-efi.img.gz" -exec cp -f {} ${{ github.workspace }}/release_bin/ \;
 
