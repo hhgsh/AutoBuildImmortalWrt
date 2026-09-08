@@ -19,7 +19,7 @@ on:
         description: "固件大小 (MB)"
         required: true
         default: "2048"
-       include_docker:
+      include_docker:
         description: "是否编译 Docker 插件"
         required: true
         default: "no"
