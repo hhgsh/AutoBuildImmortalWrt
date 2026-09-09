@@ -9,6 +9,7 @@ echo "编译固件大小为: $PROFILE MB"
 echo "Include Docker: $INCLUDE_DOCKER"
 
 echo "Create pppoe-settings"
+# 使用相对路径，兼容 /tmp/immortalwrt 和容器环境
 mkdir -p files/etc/config
 mkdir -p packages
 
@@ -25,9 +26,9 @@ wget -q -P packages/ https://github.com/timsaya/openwrt-bandix/releases/download
 wget -q -P packages/ https://github.com/timsaya/luci-app-bandix/releases/download/v0.12.11/luci-app-bandix_0.12.11-r1_all.apk || true
 wget -q -P packages/ https://github.com/timsaya/luci-app-bandix/releases/download/v0.12.11/luci-i18n-bandix-zh-cn_0.12.11-r1_all.apk || true
 
-# 为 apk 生成本地索引文件 (ImmortalWrt 25.12 必需步骤)
+# 为 apk 生成标准的本地索引文件 APKINDEX.tar.gz
 if command -v apk >/dev/null 2>&1; then
-    apk index -o packages/packages.adb packages/*.apk 2>/dev/null || true
+    apk index --allow-untrusted -o packages/APKINDEX.tar.gz packages/*.apk 2>/dev/null || true
 fi
 
 echo "确认 packages 目录下的文件："
