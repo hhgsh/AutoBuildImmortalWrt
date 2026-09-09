@@ -63,36 +63,38 @@ jobs:
         run: |
           cd $IMAGEBUILDER_DIR
           mkdir -p packages
+          cd packages
           
           echo "========================================="
-          echo "正在下载第三方离线包到 packages/ ..."
+          echo "正在精准下载第三方 APK 离线包..."
           echo "========================================="
           
-          # 1. 下载 quickfile
-          wget -q -P packages/ https://github.com/sbwml/luci-app-quickfile/releases/download/v1.0.8/luci-app-quickfile_1.0.8-r1_all.apk || true
-          wget -q -P packages/ https://github.com/sbwml/luci-app-quickfile/releases/download/v1.0.8/luci-i18n-quickfile-zh-cn_1.0.8-r1_all.apk || true
+          # 使用 curl -fL 确保跟随 GitHub Release 的重定向下载
+          curl -fL -O https://github.com/sbwml/luci-app-quickfile/releases/download/v1.0.8/luci-app-quickfile_1.0.8-r1_all.apk || true
+          curl -fL -O https://github.com/sbwml/luci-app-quickfile/releases/download/v1.0.8/luci-i18n-quickfile-zh-cn_1.0.8-r1_all.apk || true
           
-          # 2. 下载 bandix
-          wget -q -P packages/ https://github.com/timsaya/openwrt-bandix/releases/download/v0.12.10/bandix-0.12.10-r1_x86_64.apk || true
-          wget -q -P packages/ https://github.com/timsaya/luci-app-bandix/releases/download/v0.12.11/luci-app-bandix_0.12.11-r1_all.apk || true
-          wget -q -P packages/ url?id=1timsaya/luci-app-bandix/releases/download/v0.12.11/luci-i18n-bandix-zh-cn_0.12.11-r1_all.apk || true
+          curl -fL -O https://github.com/timsaya/openwrt-bandix/releases/download/v0.12.10/bandix-0.12.10-r1_x86_64.apk || true
+          curl -fL -O https://github.com/timsaya/luci-app-bandix/releases/download/v0.12.11/luci-app-bandix_0.12.11-r1_all.apk || true
+          curl -fL -O https://github.com/timsaya/luci-app-bandix/releases/download/v0.12.11/luci-i18n-bandix-zh-cn_0.12.11-r1_all.apk || true
           
-          # 3. 核心：建立免签名索引，并使用 absolute file 路径追加本地源
+          cd $IMAGEBUILDER_DIR
+          
+          # 为 apk 生成标准的本地索引文件 APKINDEX.tar.gz
           if command -v apk >/dev/null 2>&1; then
             apk index --allow-untrusted -o packages/APKINDEX.tar.gz packages/*.apk 2>/dev/null || true
           fi
           
-          # 强制把本地 packages 文件夹以绝对路径写入 repositories.conf，并允许未签名包
+          # 注册 packages 绝对路径到 repositories.conf
           echo "$IMAGEBUILDER_DIR/packages" >> repositories.conf
           
-          # 导出自定义包变量
+          # 导出变量
           APK_SCRIPT="${{ github.workspace }}/shell/apk-custom-packages.sh"
           if [ -f "$APK_SCRIPT" ]; then
             source "$APK_SCRIPT"
             echo "CUSTOM_PACKAGES=$CUSTOM_PACKAGES" >> $GITHUB_ENV
           fi
           
-          echo "=== 检查 packages 目录下的包及索引 ==="
+          echo "=== 检查下载完成的文件 ==="
           ls -la packages/
           
       - name: Build Firmware with build25.sh
