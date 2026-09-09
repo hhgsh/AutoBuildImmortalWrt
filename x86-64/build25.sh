@@ -22,7 +22,7 @@ echo "========================================="
 echo "开始下载第三方离线包到 ${PKG_DIR} ..."
 echo "========================================="
 
-# 3. 使用 curl -fL 强力跟随重定向下载 quickfile 离线包
+# 3. 使用 curl -fL 下载 quickfile 离线包
 curl -fL -o "${PKG_DIR}/luci-app-quickfile_1.0.8-r1_all.apk" https://github.com/sbwml/luci-app-quickfile/releases/download/v1.0.8/luci-app-quickfile_1.0.8-r1_all.apk || true
 curl -fL -o "${PKG_DIR}/luci-i18n-quickfile-zh-cn_1.0.8-r1_all.apk" https://github.com/sbwml/luci-app-quickfile/releases/download/v1.0.8/luci-i18n-quickfile-zh-cn_1.0.8-r1_all.apk || true
 
@@ -31,16 +31,16 @@ curl -fL -o "${PKG_DIR}/bandix-0.12.10-r1_x86_64.apk" https://github.com/timsaya
 curl -fL -o "${PKG_DIR}/luci-app-bandix_0.12.11-r1_all.apk" https://github.com/timsaya/luci-app-bandix/releases/download/v0.12.11/luci-app-bandix_0.12.11-r1_all.apk || true
 curl -fL -o "${PKG_DIR}/luci-i18n-bandix-zh-cn_0.12.11-r1_all.apk" https://github.com/timsaya/luci-app-bandix/releases/download/v0.12.11/luci-i18n-bandix-zh-cn_0.12.11-r1_all.apk || true
 
-# 5. 生成本地 APK 索引并配置仓库路径
 cd "${IB_DIR}"
 
+# 5. 核心关键点：生成本地 APKINDEX 并强制写入信任源
 if command -v apk >/dev/null 2>&1; then
     apk index --allow-untrusted -o "${PKG_DIR}/APKINDEX.tar.gz" "${PKG_DIR}"/*.apk 2>/dev/null || true
 fi
 
-# 确保本地 packages 目录加入 repositories.conf
+# 在 repositories.conf 开头插入本地绝对路径（带 @untrusted 标记）
 if ! grep -q "${PKG_DIR}" repositories.conf 2>/dev/null; then
-    echo "${PKG_DIR}" >> repositories.conf
+    sed -i "1i ${PKG_DIR}" repositories.conf
 fi
 
 echo "确认 packages 目录下的文件："
@@ -56,16 +56,20 @@ EOF
 
 echo "pppoe-settings 已成功写入 ${FILES_DIR}/etc/config/pppoe-settings"
 
-# 7. 执行真正的 ImageBuilder 打包 (补全了缺失的 make 指令)
+# 7. 将具体的本地 apk 文件全路径与网络包拼接传递给 PACKAGES
 echo "========================================="
-echo "开始执行 make image 编译打包..."
+echo "开始执行 ImageBuilder 编译打包..."
 echo "========================================="
 
 TARGET_PROFILE="generic"
-CUSTOM_PACKAGES_CLEAN=$(echo "$CUSTOM_PACKAGES" | xargs)
 
-# 传入 APK_FLAGS 解除第三方离线包签名限制并执行打包
-make image PROFILE="${TARGET_PROFILE}" PACKAGES="${CUSTOM_PACKAGES_CLEAN}" FILES="files" APK_FLAGS="--allow-untrusted"
+# 提取 packages 目录下所有的真实 apk 文件完整路径，避免库名找不到报错
+LOCAL_APKS=$(ls "${PKG_DIR}"/*.apk 2>/dev/null | tr '\n' ' ')
+
+# 合并用户定义的包与本地绝对路径文件
+ALL_PACKAGES="${CUSTOM_PACKAGES} ${LOCAL_APKS}"
+
+make image PROFILE="${TARGET_PROFILE}" PACKAGES="${ALL_PACKAGES}" FILES="files"
 
 echo "========================================="
 echo "打包完成，检查编译出的固件文件："
