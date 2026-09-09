@@ -45,7 +45,7 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y build-essential libncurses5-dev libncursesw5-dev \
-            zlib1g-dev gawk git gettext libssl-dev xsltproc rsync u-boot-tools zstd wget
+            zlib1g-dev gawk git gettext libssl-dev xsltproc rsync u-boot-tools zstd wget curl
 
       - name: Download and Extract ImmortalWrt ImageBuilder
         run: |
@@ -63,29 +63,28 @@ jobs:
         run: |
           cd $IMAGEBUILDER_DIR
           mkdir -p packages
-          cd packages
           
           echo "========================================="
-          echo "正在精准下载第三方 APK 离线包..."
+          echo "正在下载第三方离线包到 packages/ ..."
           echo "========================================="
           
-          # 使用 curl -fL 确保跟随 GitHub Release 的重定向下载
-          curl -fL -O https://github.com/sbwml/luci-app-quickfile/releases/download/v1.0.8/luci-app-quickfile_1.0.8-r1_all.apk || true
-          curl -fL -O https://github.com/sbwml/luci-app-quickfile/releases/download/v1.0.8/luci-i18n-quickfile-zh-cn_1.0.8-r1_all.apk || true
+          # 1. 下载 quickfile
+          curl -fL -o "packages/luci-app-quickfile_1.0.8-r1_all.apk" https://github.com/sbwml/luci-app-quickfile/releases/download/v1.0.8/luci-app-quickfile_1.0.8-r1_all.apk || true
+          curl -fL -o "packages/luci-i18n-quickfile-zh-cn_1.0.8-r1_all.apk" https://github.com/sbwml/luci-app-quickfile/releases/download/v1.0.8/luci-i18n-quickfile-zh-cn_1.0.8-r1_all.apk || true
           
-          curl -fL -O https://github.com/timsaya/openwrt-bandix/releases/download/v0.12.10/bandix-0.12.10-r1_x86_64.apk || true
-          curl -fL -O https://github.com/timsaya/luci-app-bandix/releases/download/v0.12.11/luci-app-bandix_0.12.11-r1_all.apk || true
-          curl -fL -O https://github.com/timsaya/luci-app-bandix/releases/download/v0.12.11/luci-i18n-bandix-zh-cn_0.12.11-r1_all.apk || true
+          # 2. 下载 bandix
+          curl -fL -o "packages/bandix-0.12.10-r1_x86_64.apk" https://github.com/timsaya/openwrt-bandix/releases/download/v0.12.10/bandix-0.12.10-r1_x86_64.apk || true
+          curl -fL -o "packages/luci-app-bandix_0.12.11-r1_all.apk" https://github.com/timsaya/luci-app-bandix/releases/download/v0.12.11/luci-app-bandix_0.12.11-r1_all.apk || true
+          curl -fL -o "packages/luci-i18n-bandix-zh-cn_0.12.11-r1_all.apk" https://github.com/timsaya/luci-app-bandix/releases/download/v0.12.11/luci-i18n-bandix-zh-cn_0.12.11-r1_all.apk || true
           
-          cd $IMAGEBUILDER_DIR
-          
-          # 为 apk 生成标准的本地索引文件 APKINDEX.tar.gz
+          # 3. 建立免签名本地索引并注册路径
           if command -v apk >/dev/null 2>&1; then
             apk index --allow-untrusted -o packages/APKINDEX.tar.gz packages/*.apk 2>/dev/null || true
           fi
           
-          # 注册 packages 绝对路径到 repositories.conf
-          echo "$IMAGEBUILDER_DIR/packages" >> repositories.conf
+          if ! grep -q "$IMAGEBUILDER_DIR/packages" repositories.conf 2>/dev/null; then
+            sed -i "1i $IMAGEBUILDER_DIR/packages" repositories.conf
+          fi
           
           # 导出变量
           APK_SCRIPT="${{ github.workspace }}/shell/apk-custom-packages.sh"
@@ -94,9 +93,9 @@ jobs:
             echo "CUSTOM_PACKAGES=$CUSTOM_PACKAGES" >> $GITHUB_ENV
           fi
           
-          echo "=== 检查下载完成的文件 ==="
+          echo "=== 检查 packages 目录下的文件与索引 ==="
           ls -la packages/
-          
+
       - name: Build Firmware with build25.sh
         run: |
           cd $IMAGEBUILDER_DIR
@@ -104,26 +103,27 @@ jobs:
           mkdir -p bin files files/etc/config
           [ -d "${{ github.workspace }}/files" ] && cp -rf ${{ github.workspace }}/files/* files/ 2>/dev/null || true
           [ -d "${{ github.workspace }}/custom" ] && cp -rf ${{ github.workspace }}/custom/* files/etc/config/ 2>/dev/null || true
-          [ -f "${{ github.workspace }}/x86-64/imm25.config" ] && cp -f ${{ github.workspace }}/x86-64/imm25.config .config
           
           export PROFILE="generic"
           export CUSTOM_ROUTER_IP="${{ github.event.inputs.custom_router_ip }}"
           export CUSTOM_PACKAGES="${CUSTOM_PACKAGES}"
+          export APK_FLAGS="--allow-untrusted"
           
           BUILD_SCRIPT="${{ github.workspace }}/x86-64/build25.sh"
           if [ -f "$BUILD_SCRIPT" ]; then
-            echo "运行 x86-64/build25.sh..."
             bash "$BUILD_SCRIPT"
           else
             make image PROFILE="generic" PACKAGES="$CUSTOM_PACKAGES" FILES="files"
           fi
           
-          # 提取消并保存所有生成的镜像包
+          # 全面收集提取编译成功的镜像包
           mkdir -p ${{ github.workspace }}/release_bin
-          find bin/targets/x86/64/ -type f \( -name "*.img.gz" -o -name "*.iso" \) -exec cp -f {} ${{ github.workspace }}/release_bin/ \;
+          find bin/targets/ -type f \( -name "*.img*" -o -name "*.iso*" -o -name "*.tar.gz" \) -exec cp -fv {} ${{ github.workspace }}/release_bin/ \;
           
-          echo "=== 成功提取到的发布固件文件 ==="
+          echo "========================================="
+          echo "检查成功提取到的 Release 固件文件列表："
           ls -la ${{ github.workspace }}/release_bin/
+          echo "========================================="
 
       - name: Create Release Info
         run: |
@@ -139,7 +139,6 @@ jobs:
         with:
           tag_name: Laohu-x86-64-${{ github.event.inputs.luci_version }}
           body_path: ${{ github.workspace }}/router-info.md
-          files: |
-            ${{ github.workspace }}/release_bin/*
+          files: ${{ github.workspace }}/release_bin/*
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
