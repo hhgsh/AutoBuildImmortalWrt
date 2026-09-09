@@ -1,29 +1,11 @@
 #!/bin/bash
-# 1. 动态获取并确认 ImageBuilder 的 packages 目录绝对路径
-TARGET_PKG_DIR="${IMAGEBUILDER_DIR:-/tmp/immortalwrt}/packages"
-mkdir -p "$TARGET_PKG_DIR"
 
-# 2. 拼接 CUSTOM_PACKAGES 变量
-# 官方自带插件：直接添加，不需要下载
+# 官方自带包
 CUSTOM_PACKAGES="$CUSTOM_PACKAGES luci-i18n-ddns-zh-cn luci-i18n-zerotier-zh-cn"
 
-# 第三方插件声明
+# 第三方离线包（对应在 build25.sh 里下载的文件）
 CUSTOM_PACKAGES="$CUSTOM_PACKAGES quickfile luci-app-quickfile luci-i18n-quickfile-zh-cn"
 CUSTOM_PACKAGES="$CUSTOM_PACKAGES bandix luci-app-bandix luci-i18n-bandix-zh-cn"
-
-# 3. 将第三方离线包精准下载到 TARGET_PKG_DIR
-if echo "$CUSTOM_PACKAGES" | grep -q "quickfile"; then
-    echo "正在下载 quickfile 离线包到 $TARGET_PKG_DIR ..."
-    wget -q -P "$TARGET_PKG_DIR" https://github.com/sbwml/luci-app-quickfile/releases/download/v1.0.8/luci-app-quickfile_1.0.8-r1_all.apk || true
-    wget -q -P "$TARGET_PKG_DIR" https://github.com/sbwml/luci-app-quickfile/releases/download/v1.0.8/luci-i18n-quickfile-zh-cn_1.0.8-r1_all.apk || true
-fi
-
-if echo "$CUSTOM_PACKAGES" | grep -q "bandix"; then
-    echo "正在下载 bandix 离线包到 $TARGET_PKG_DIR ..."
-    wget -q -P "$TARGET_PKG_DIR" https://github.com/timsaya/openwrt-bandix/releases/download/v0.12.10/bandix-0.12.10-r1_x86_64.apk || true
-    wget -q -P "$TARGET_PKG_DIR" https://github.com/timsaya/luci-app-bandix/releases/download/v0.12.11/luci-app-bandix_0.12.11-r1_all.apk || true
-    wget -q -P "$TARGET_PKG_DIR" https://github.com/timsaya/luci-app-bandix/releases/download/v0.12.11/luci-i18n-bandix-zh-cn_0.12.11-r1_all.apk || true
-fi
 # ============= imm 25.12.x仓库外的第三方插件apk==========
 # ============= 若启用 则打开注释 ========================
 # ============= 但此文件也可以处理仓库内的软件去留 本质上是做了一个PACKAGES字符串的拼接 ================
@@ -58,7 +40,7 @@ fi
 #CUSTOM_PACKAGES="$CUSTOM_PACKAGES luci-i18n-dae-zh-cn"
 #CUSTOM_PACKAGES="$CUSTOM_PACKAGES luci-i18n-daed-zh-cn"
 #CUSTOM_PACKAGES="$CUSTOM_PACKAGES luci-i18n-homeproxy-zh-cn"
-CUSTOM_PACKAGES="$CUSTOM_PACKAGES geoview xray-core sing-box hysteria luci-i18n-passwall-zh-cn"
+#CUSTOM_PACKAGES="$CUSTOM_PACKAGES geoview xray-core sing-box hysteria luci-i18n-passwall-zh-cn"
 #CUSTOM_PACKAGES="$CUSTOM_PACKAGES luci-app-openclash"
 # VPN
 #CUSTOM_PACKAGES="$CUSTOM_PACKAGES luci-app-tailscale-community luci-i18n-tailscale-community-zh-cn"
