@@ -1,22 +1,28 @@
 #!/bin/bash
-# 创建本地包目录
-mkdir -p packages
+# 1. 动态获取并确认 ImageBuilder 的 packages 目录绝对路径
+TARGET_PKG_DIR="${IMAGEBUILDER_DIR:-/tmp/immortalwrt}/packages"
+mkdir -p "$TARGET_PKG_DIR"
 
-# 拼接你的自定义包列表
+# 2. 拼接 CUSTOM_PACKAGES 变量
+# 官方自带插件：直接添加，不需要下载
+CUSTOM_PACKAGES="$CUSTOM_PACKAGES luci-i18n-ddns-zh-cn luci-i18n-zerotier-zh-cn"
+
+# 第三方插件声明
 CUSTOM_PACKAGES="$CUSTOM_PACKAGES quickfile luci-app-quickfile luci-i18n-quickfile-zh-cn"
 CUSTOM_PACKAGES="$CUSTOM_PACKAGES bandix luci-app-bandix luci-i18n-bandix-zh-cn"
 
-# 自动匹配：如果开启了 quickfile，自动下到 packages/
+# 3. 将第三方离线包精准下载到 TARGET_PKG_DIR
 if echo "$CUSTOM_PACKAGES" | grep -q "quickfile"; then
-    wget -q -P packages/ https://github.com/sbwml/luci-app-quickfile/releases/download/v1.0.8/luci-app-quickfile_1.0.8-r1_all.apk || true
-    wget -q -P packages/ https://github.com/sbwml/luci-app-quickfile/releases/download/v1.0.8/luci-i18n-quickfile-zh-cn_1.0.8-r1_all.apk || true
+    echo "正在下载 quickfile 离线包到 $TARGET_PKG_DIR ..."
+    wget -q -P "$TARGET_PKG_DIR" https://github.com/sbwml/luci-app-quickfile/releases/download/v1.0.8/luci-app-quickfile_1.0.8-r1_all.apk || true
+    wget -q -P "$TARGET_PKG_DIR" https://github.com/sbwml/luci-app-quickfile/releases/download/v1.0.8/luci-i18n-quickfile-zh-cn_1.0.8-r1_all.apk || true
 fi
 
-# 自动匹配：如果开启了 bandix，自动下到 packages/
 if echo "$CUSTOM_PACKAGES" | grep -q "bandix"; then
-    wget -q -P packages/ https://github.com/timsaya/openwrt-bandix/releases/download/v0.12.10/bandix-0.12.10-r1_x86_64.apk || true
-    wget -q -P packages/ https://github.com/timsaya/luci-app-bandix/releases/download/v0.12.11/luci-app-bandix_0.12.11-r1_all.apk || true
-    wget -q -P packages/ https://github.com/timsaya/luci-app-bandix/releases/download/v0.12.11/luci-i18n-bandix-zh-cn_0.12.11-r1_all.apk || true
+    echo "正在下载 bandix 离线包到 $TARGET_PKG_DIR ..."
+    wget -q -P "$TARGET_PKG_DIR" https://github.com/timsaya/openwrt-bandix/releases/download/v0.12.10/bandix-0.12.10-r1_x86_64.apk || true
+    wget -q -P "$TARGET_PKG_DIR" https://github.com/timsaya/luci-app-bandix/releases/download/v0.12.11/luci-app-bandix_0.12.11-r1_all.apk || true
+    wget -q -P "$TARGET_PKG_DIR" https://github.com/timsaya/luci-app-bandix/releases/download/v0.12.11/luci-i18n-bandix-zh-cn_0.12.11-r1_all.apk || true
 fi
 # ============= imm 25.12.x仓库外的第三方插件apk==========
 # ============= 若启用 则打开注释 ========================
