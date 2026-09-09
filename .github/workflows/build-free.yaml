@@ -12,13 +12,37 @@ on:
           - "25.12.2"
           - "25.12.1"
       custom_router_ip:
-        description: "路由器管理地址"
+        description: "设置路由器管理地址"
         required: true
         default: "192.168.0.31"
       profile:
         description: "固件大小 (MB)"
         required: true
         default: "2048"
+      include_docker:
+        description: "是否编译 Docker 插件"
+        required: true
+        default: "no"
+        type: choice
+        options:
+          - "yes"
+          - "no"
+      enable_pppoe:
+        description: "是否配置PPPoE拨号"
+        required: true
+        default: "no"
+        type: choice
+        options:
+          - "yes"
+          - "no"
+      pppoe_account:
+        description: "宽带账号"
+        required: false
+        default: ""
+      pppoe_password:
+        description: "宽带密码"
+        required: false
+        default: ""
 
 permissions:
   contents: write
@@ -33,8 +57,9 @@ jobs:
 
       - name: Set executable permissions
         run: |
-          [ -f "${{ github.workspace }}/x86-64/build25.sh" ] && chmod +x ${{ github.workspace }}/x86-64/build25.sh || true
-          [ -f "${{ github.workspace }}/shell/apk-custom-packages.sh" ] && chmod +x ${{ github.workspace }}/shell/apk-custom-packages.sh || true
+          if [ -f "${{ github.workspace }}/x86-64/build25.sh" ]; then
+            chmod +x ${{ github.workspace }}/x86-64/build25.sh
+          fi
 
       - name: Save Custom Router IP
         run: |
@@ -45,94 +70,45 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y build-essential libncurses5-dev libncursesw5-dev \
-            zlib1g-dev gawk git gettext libssl-dev xsltproc rsync u-boot-tools zstd wget curl
+            zlib1g-dev gawk git gettext libssl-dev xsltproc rsync u-boot-tools zstd wget
 
       - name: Download and Extract ImmortalWrt ImageBuilder
         run: |
           luci_version="${{ github.event.inputs.luci_version }}"
           IB_URL="https://downloads.immortalwrt.org/releases/${luci_version}/targets/x86/64/immortalwrt-imagebuilder-${luci_version}-x86-64.Linux-x86_64.tar.zst"
           
-          echo "正在下载 ImageBuilder: ${IB_URL}"
+          echo "Downloading ImageBuilder from: ${IB_URL}"
           wget -q --show-progress "${IB_URL}" -O imagebuilder.tar.zst
           
           mkdir -p /tmp/immortalwrt
           tar -I zstd -xf imagebuilder.tar.zst -C /tmp/immortalwrt --strip-components=1
           echo "IMAGEBUILDER_DIR=/tmp/immortalwrt" >> $GITHUB_ENV
 
-      - name: Download APK Packages, Build Index and Export Variables
-        run: |
-          cd $IMAGEBUILDER_DIR
-          mkdir -p packages
-          
-          echo "========================================="
-          echo "正在下载第三方离线包到 packages/ ..."
-          echo "========================================="
-          
-          # 1. 下载 quickfile (修正有效 release 链接)
-          curl -fL -o "packages/luci-app-quickfile_1.0.8-r1_all.apk" "https://github.com/sbwml/luci-app-quickfile/releases/download/v1.0.8/luci-app-quickfile_1.0.8-r1_all.apk" || true
-          curl -fL -o "packages/luci-i18n-quickfile-zh-cn_1.0.8-r1_all.apk" "https://github.com/sbwml/luci-app-quickfile/releases/download/v1.0.8/luci-i18n-quickfile-zh-cn_1.0.8-r1_all.apk" || true
-          
-          # 2. 下载 bandix
-          curl -fL -o "packages/bandix-0.12.10-r1_x86_64.apk" "https://github.com/timsaya/openwrt-bandix/releases/download/v0.12.10/bandix-0.12.10-r1_x86_64.apk" || true
-          curl -fL -o "packages/luci-app-bandix_0.12.11-r1_all.apk" "https://github.com/timsaya/luci-app-bandix/releases/download/v0.12.11/luci-app-bandix_0.12.11-r1_all.apk" || true
-          curl -fL -o "packages/luci-i18n-bandix-zh-cn_0.12.11-r1_all.apk" "https://github.com/timsaya/luci-app-bandix/releases/download/v0.12.11/luci-i18n-bandix-zh-cn_0.12.11-r1_all.apk" || true
-          
-          # 3. 建立免签名本地索引
-          if command -v apk >/dev/null 2>&1; then
-            apk index --allow-untrusted -o packages/APKINDEX.tar.gz packages/*.apk 2>/dev/null || true
-          fi
-          
-          # 修正文件名：25.12 中文件名为 repositories (无 .conf 后缀)
-          REPO_FILE="repositories"
-          [ ! -f "$REPO_FILE" ] && [ -f "repositories.conf" ] && REPO_FILE="repositories.conf"
-          
-          if ! grep -q "$IMAGEBUILDER_DIR/packages" "$REPO_FILE" 2>/dev/null; then
-            sed -i "1i $IMAGEBUILDER_DIR/packages" "$REPO_FILE"
-          fi
-          
-          # 导出变量
-          APK_SCRIPT="${{ github.workspace }}/shell/apk-custom-packages.sh"
-          if [ -f "$APK_SCRIPT" ]; then
-            source "$APK_SCRIPT"
-            echo "CUSTOM_PACKAGES=$CUSTOM_PACKAGES" >> $GITHUB_ENV
-          fi
-          
-          echo "=== 检查 packages 目录下的文件与索引 ==="
-          ls -la packages/
-
-      - name: Build Firmware with build25.sh
+      - name: Build ImmortalWrt Firmware
         run: |
           cd $IMAGEBUILDER_DIR
           
           mkdir -p bin files files/etc/config
           [ -d "${{ github.workspace }}/files" ] && cp -rf ${{ github.workspace }}/files/* files/ 2>/dev/null || true
           [ -d "${{ github.workspace }}/custom" ] && cp -rf ${{ github.workspace }}/custom/* files/etc/config/ 2>/dev/null || true
+          [ -f "${{ github.workspace }}/x86-64/imm25.config" ] && cp -f ${{ github.workspace }}/x86-64/imm25.config .config
           
-          export PROFILE="generic"
-          export CUSTOM_ROUTER_IP="${{ github.event.inputs.custom_router_ip }}"
-          export CUSTOM_PACKAGES="${CUSTOM_PACKAGES}"
-          export APK_FLAGS="--allow-untrusted"
+          export PROFILE="${{ github.event.inputs.profile }}"
+          export INCLUDE_DOCKER="${{ github.event.inputs.include_docker }}"
           
-          BUILD_SCRIPT="${{ github.workspace }}/x86-64/build25.sh"
-          if [ -f "$BUILD_SCRIPT" ]; then
-            bash "$BUILD_SCRIPT"
+          if [ -f "${{ github.workspace }}/x86-64/build25.sh" ]; then
+            bash ${{ github.workspace }}/x86-64/build25.sh
           else
-            make image PROFILE="generic" PACKAGES="$CUSTOM_PACKAGES" FILES="files"
+            make image
           fi
           
-          # 收集并提取编译好的镜像
-          mkdir -p ${{ github.workspace }}/release_bin
-          find bin/targets/ -type f \( -name "*.img*" -o -name "*.iso*" -o -name "*.tar.gz" \) -exec cp -fv {} ${{ github.workspace }}/release_bin/ \;
-          
-          echo "========================================="
-          echo "检查成功提取到的 Release 固件文件列表："
-          ls -la ${{ github.workspace }}/release_bin/
-          echo "========================================="
+          mkdir -p ${{ github.workspace }}/bin/targets/x86/64
+          [ -d "bin/targets/x86/64" ] && cp -rf bin/targets/x86/64/* ${{ github.workspace }}/bin/targets/x86/64/ 2>/dev/null || true
 
       - name: Create Release Info
         run: |
           cat > ${{ github.workspace }}/router-info.md <<EOF
-          ## 📡 ImmortalWrt ${{ github.event.inputs.luci_version }} 固件信息
+          ## 📡 路由器后台信息
           - 🏠 **后台地址**: ${{ github.event.inputs.custom_router_ip }}
           - 👤 **用户名**: root
           - 🔑 **密码**: 无
@@ -141,8 +117,9 @@ jobs:
       - name: Upload Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: Laohu-x86-64-${{ github.event.inputs.luci_version }}
+          tag_name: Laohu-x86-64
           body_path: ${{ github.workspace }}/router-info.md
-          files: ${{ github.workspace }}/release_bin/*
+          files: |
+            ${{ github.workspace }}/bin/targets/x86/64/*
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
