@@ -65,7 +65,7 @@ jobs:
           mkdir -p packages
           
           echo "========================================="
-          echo "正在把第三方离线包精准下载到 ImageBuilder 的 packages 目录..."
+          echo "正在下载第三方离线包到 packages/ ..."
           echo "========================================="
           
           # 1. 下载 quickfile
@@ -75,26 +75,26 @@ jobs:
           # 2. 下载 bandix
           wget -q -P packages/ https://github.com/timsaya/openwrt-bandix/releases/download/v0.12.10/bandix-0.12.10-r1_x86_64.apk || true
           wget -q -P packages/ https://github.com/timsaya/luci-app-bandix/releases/download/v0.12.11/luci-app-bandix_0.12.11-r1_all.apk || true
-          wget -q -P packages/ https://github.com/timsaya/luci-app-bandix/releases/download/v0.12.11/luci-i18n-bandix-zh-cn_0.12.11-r1_all.apk || true
+          wget -q -P packages/ url?id=1timsaya/luci-app-bandix/releases/download/v0.12.11/luci-i18n-bandix-zh-cn_0.12.11-r1_all.apk || true
           
-          # 3. 核心步骤：用 apk 生成索引包 APKINDEX.tar.gz
+          # 3. 核心：建立免签名索引，并使用 absolute file 路径追加本地源
           if command -v apk >/dev/null 2>&1; then
             apk index --allow-untrusted -o packages/APKINDEX.tar.gz packages/*.apk 2>/dev/null || true
           fi
           
-          # 将本地 packages 路径加到 repositories.conf 最前排
+          # 强制把本地 packages 文件夹以绝对路径写入 repositories.conf，并允许未签名包
           echo "$IMAGEBUILDER_DIR/packages" >> repositories.conf
           
-          # 导入 Shell 配置中的包名变量
+          # 导出自定义包变量
           APK_SCRIPT="${{ github.workspace }}/shell/apk-custom-packages.sh"
           if [ -f "$APK_SCRIPT" ]; then
             source "$APK_SCRIPT"
             echo "CUSTOM_PACKAGES=$CUSTOM_PACKAGES" >> $GITHUB_ENV
           fi
           
-          echo "=== 已下载文件与生成的 APKINDEX 索引 ==="
+          echo "=== 检查 packages 目录下的包及索引 ==="
           ls -la packages/
-
+          
       - name: Build Firmware with build25.sh
         run: |
           cd $IMAGEBUILDER_DIR
