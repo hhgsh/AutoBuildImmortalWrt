@@ -1,76 +1,121 @@
 #!/bin/bash
-
-# 1. 导入 Shell 配置中的包名变量
-if [ -f "shell/apk-custom-packages.sh" ]; then
-    source shell/apk-custom-packages.sh
-fi
-
+# Log file for debugging
+# 目前支持少部分第三方软件apk 通过打开shell/apk-custom-packages.sh的注释来集成
+source shell/apk-custom-packages.sh
+echo "第三方apk软件包: $CUSTOM_PACKAGES"
 LOGFILE="/tmp/uci-defaults-log.txt"
-echo "Starting build25.sh at $(date)" >> $LOGFILE
-echo "第三方 apk 软件包: $CUSTOM_PACKAGES"
+echo "Starting 99-custom.sh at $(date)" >> $LOGFILE
+echo "编译固件大小为: $PROFILE MB"
+echo "Include Docker: $INCLUDE_DOCKER"
 
-# 2. 获取 ImageBuilder 的实际绝对路径
-IB_DIR="${IMAGEBUILDER_DIR:-$(pwd)}"
-PKG_DIR="${IB_DIR}/packages"
-FILES_DIR="${IB_DIR}/files"
+echo "Create pppoe-settings"
+mkdir -p  /home/build/immortalwrt/files/etc/config
 
-echo "当前打包根目录: ${IB_DIR}"
-mkdir -p "${FILES_DIR}/etc/config"
-mkdir -p "${PKG_DIR}"
-
-echo "========================================="
-echo "开始下载第三方离线包到 ${PKG_DIR} ..."
-echo "========================================="
-
-# 3. 使用 curl -fL 下载 quickfile 离线包
-curl -fL -o "${PKG_DIR}/luci-app-quickfile_1.0.8-r1_all.apk" https://github.com/sbwml/luci-app-quickfile/releases/download/v1.0.8/luci-app-quickfile_1.0.8-r1_all.apk || true
-curl -fL -o "${PKG_DIR}/luci-i18n-quickfile-zh-cn_1.0.8-r1_all.apk" https://github.com/sbwml/luci-app-quickfile/releases/download/v1.0.8/luci-i18n-quickfile-zh-cn_1.0.8-r1_all.apk || true
-
-# 4. 下载 bandix 离线包
-curl -fL -o "${PKG_DIR}/bandix-0.12.10-r1_x86_64.apk" https://github.com/timsaya/openwrt-bandix/releases/download/v0.12.10/bandix-0.12.10-r1_x86_64.apk || true
-curl -fL -o "${PKG_DIR}/luci-app-bandix_0.12.11-r1_all.apk" https://github.com/timsaya/luci-app-bandix/releases/download/v0.12.11/luci-app-bandix_0.12.11-r1_all.apk || true
-curl -fL -o "${PKG_DIR}/luci-i18n-bandix-zh-cn_0.12.11-r1_all.apk" https://github.com/timsaya/luci-app-bandix/releases/download/v0.12.11/luci-i18n-bandix-zh-cn_0.12.11-r1_all.apk || true
-
-cd "${IB_DIR}"
-
-# 5. 生成本地 APK 索引，并将本地目录加入仓库配置
-if command -v apk >/dev/null 2>&1; then
-    apk index --allow-untrusted -o "${PKG_DIR}/APKINDEX.tar.gz" "${PKG_DIR}"/*.apk 2>/dev/null || true
-fi
-
-# 在 repositories.conf 开头插入本地包路径，确保 ImageBuilder 优先解析本地包
-if ! grep -q "${PKG_DIR}" repositories.conf 2>/dev/null; then
-    sed -i "1i ${PKG_DIR}" repositories.conf
-fi
-
-echo "确认 packages 目录下的文件："
-ls -la "${PKG_DIR}"
-echo "========================================="
-
-# 6. 创建 pppoe 配置文件
-cat << EOF > "${FILES_DIR}/etc/config/pppoe-settings"
-enable_pppoe="${ENABLE_PPPOE}"
-pppoe_user="${PPPOE_USER}"
-pppoe_pass="${PPPOE_PASS}"
+# 创建pppoe配置文件 yml传入环境变量ENABLE_PPPOE等 写入配置文件 供99-custom.sh读取
+cat << EOF > /home/build/immortalwrt/files/etc/config/pppoe-settings
+enable_pppoe=${ENABLE_PPPOE}
+pppoe_account=${PPPOE_ACCOUNT}
+pppoe_password=${PPPOE_PASSWORD}
 EOF
 
-echo "pppoe-settings 已成功写入 ${FILES_DIR}/etc/config/pppoe-settings"
+echo "cat pppoe-settings"
+cat /home/build/immortalwrt/files/etc/config/pppoe-settings
 
-# 7. 执行真正的 ImageBuilder 打包
-echo "========================================="
-echo "开始执行 ImageBuilder 编译打包..."
-echo "========================================="
+if [ -z "$CUSTOM_PACKAGES" ]; then
+  echo "⚪️ 未选择 任何第三方软件包"
+else
+  # ============= 同步第三方插件库==============
+  # 同步第三方软件仓库run/apk
+  echo "🔄 正在同步第三方软件仓库 Cloning run file repo..."
+  git clone --depth=1 https://github.com/wukongdaily/apk.git /tmp/store-apk-repo
 
-TARGET_PROFILE="generic"
-CUSTOM_PACKAGES_CLEAN=$(echo "$CUSTOM_PACKAGES" | xargs)
+  # 拷贝 run/x86 下所有 run 文件和apk文件 到 extra-packages 目录
+  mkdir -p /home/build/immortalwrt/extra-packages
+  cp -r /tmp/store-apk-repo/run/x86/* /home/build/immortalwrt/extra-packages/
 
-# 允许未签名本地离线包安装
-export APK_FLAGS="--allow-untrusted"
+  echo "✅ Run files copied to extra-packages:"
+  # 解压并拷贝apk到packages目录
+  sh shell/apk-prepare-packages.sh
+  ls -lah /home/build/immortalwrt/packages/
+fi
 
-# 注意：只传入包名变量 CUSTOM_PACKAGES_CLEAN，不包含任何 .apk 绝对路径
-make image PROFILE="${TARGET_PROFILE}" PACKAGES="${CUSTOM_PACKAGES_CLEAN}" FILES="files"
 
-echo "========================================="
-echo "打包完成，检查编译出的固件文件："
-ls -la bin/targets/x86/64/ || true
-echo "========================================="
+# 输出调试信息
+echo "$(date '+%Y-%m-%d %H:%M:%S') - 开始构建固件..."
+
+# ============= imm仓库内的插件==============
+# 定义所需安装的包列表 下列插件你都可以自行删减
+PACKAGES=""
+PACKAGES="$PACKAGES curl"
+PACKAGES="$PACKAGES luci-i18n-diskman-zh-cn"
+PACKAGES="$PACKAGES luci-i18n-firewall-zh-cn"
+PACKAGES="$PACKAGES luci-theme-argon"
+PACKAGES="$PACKAGES luci-app-argon-config"
+PACKAGES="$PACKAGES luci-i18n-argon-config-zh-cn"
+#25.12
+PACKAGES="$PACKAGES luci-i18n-package-manager-zh-cn"
+PACKAGES="$PACKAGES luci-i18n-ttyd-zh-cn"
+PACKAGES="$PACKAGES openssh-sftp-server"
+
+
+# 文件管理器
+PACKAGES="$PACKAGES luci-i18n-filemanager-zh-cn"
+# ======== shell/apk-custom-packages.sh =======
+# 合并imm仓库以外的第三方插件 暂时注释
+PACKAGES="$PACKAGES $CUSTOM_PACKAGES"
+
+
+# 判断是否需要编译 Docker 插件
+if [ "$INCLUDE_DOCKER" = "yes" ]; then
+    PACKAGES="$PACKAGES luci-i18n-dockerman-zh-cn"
+    echo "Adding package: luci-i18n-dockerman-zh-cn"
+fi
+
+# 若构建openclash 则添加内核
+if echo "$PACKAGES" | grep -q "luci-app-openclash"; then
+    echo "✅ 已选择 luci-app-openclash，添加 openclash core"
+    mkdir -p files/etc/openclash/core
+    # Download clash_meta
+    META_URL="https://raw.githubusercontent.com/vernesong/OpenClash/core/master/meta/clash-linux-amd64-v1.tar.gz"
+    wget -qO- $META_URL | tar xOvz > files/etc/openclash/core/clash_meta
+    chmod +x files/etc/openclash/core/clash_meta
+    # Download GeoIP and GeoSite
+    wget -q https://github.com/Loyalsoldier/v2ray-rules-dat/releases/latest/download/geoip.dat -O files/etc/openclash/GeoIP.dat
+    wget -q https://github.com/Loyalsoldier/v2ray-rules-dat/releases/latest/download/geosite.dat -O files/etc/openclash/GeoSite.dat
+    # Download latest openclash Client
+    URL=$(curl -s https://api.github.com/repos/vernesong/OpenClash/releases/latest \
+      | grep "browser_download_url.*apk" \
+      | head -n1 \
+      | cut -d '"' -f 4)
+    echo "OpenClash latest apk: $URL"
+    wget "$URL" -P /home/build/immortalwrt/packages/
+else
+    echo "⚪️ 未选择 luci-app-openclash"
+fi
+
+if echo "$PACKAGES" | grep -q "luci-app-ssr-plus"; then
+    echo "✅ 已选择 luci-app-ssr-plus，添加 mihomo core"
+    mkdir -p files/usr/bin
+    # Download mihomo
+    MIHOMO_URL="https://github.com/MetaCubeX/mihomo/releases/download/v1.19.24/mihomo-linux-amd64-compatible-v1.19.24.gz"
+    mkdir -p files/usr/bin
+    wget -qO- "$MIHOMO_URL" | gzip -dc > files/usr/bin/mihomo
+    chmod +x files/usr/bin/mihomo
+    echo "✅ 已下载 mihomo core"
+    ls -lah files/usr/bin
+else
+    echo "⚪️ 未选择 luci-app-ssr-plus"
+fi
+
+# 构建镜像
+echo "$(date '+%Y-%m-%d %H:%M:%S') - Building image with the following packages:"
+echo "$PACKAGES"
+
+make image PROFILE="generic" PACKAGES="$PACKAGES" FILES="/home/build/immortalwrt/files" ROOTFS_PARTSIZE=$PROFILE
+
+if [ $? -ne 0 ]; then
+    echo "$(date '+%Y-%m-%d %H:%M:%S') - Error: Build failed!"
+    exit 1
+fi
+
+echo "$(date '+%Y-%m-%d %H:%M:%S') - Build completed successfully."
