@@ -22,16 +22,16 @@ echo "========================================="
 echo "开始下载第三方离线包到 ${PKG_DIR} ..."
 echo "========================================="
 
-# 3. 下载 quickfile 离线包
-wget -q -P "${PKG_DIR}" https://github.com/sbwml/luci-app-quickfile/releases/download/v1.0.8/luci-app-quickfile_1.0.8-r1_all.apk || true
-wget -q -P "${PKG_DIR}" https://github.com/sbwml/luci-app-quickfile/releases/download/v1.0.8/luci-i18n-quickfile-zh-cn_1.0.8-r1_all.apk || true
+# 3. 使用 curl -fL 强力跟随重定向下载 quickfile 离线包
+curl -fL -o "${PKG_DIR}/luci-app-quickfile_1.0.8-r1_all.apk" https://github.com/sbwml/luci-app-quickfile/releases/download/v1.0.8/luci-app-quickfile_1.0.8-r1_all.apk || true
+curl -fL -o "${PKG_DIR}/luci-i18n-quickfile-zh-cn_1.0.8-r1_all.apk" https://github.com/sbwml/luci-app-quickfile/releases/download/v1.0.8/luci-i18n-quickfile-zh-cn_1.0.8-r1_all.apk || true
 
 # 4. 下载 bandix 离线包
-wget -q -P "${PKG_DIR}" https://github.com/timsaya/openwrt-bandix/releases/download/v0.12.10/bandix-0.12.10-r1_x86_64.apk || true
-wget -q -P "${PKG_DIR}" https://github.com/timsaya/luci-app-bandix/releases/download/v0.12.11/luci-app-bandix_0.12.11-r1_all.apk || true
-wget -q -P "${PKG_DIR}" https://github.com/timsaya/luci-app-bandix/releases/download/v0.12.11/luci-i18n-bandix-zh-cn_0.12.11-r1_all.apk || true
+curl -fL -o "${PKG_DIR}/bandix-0.12.10-r1_x86_64.apk" https://github.com/timsaya/openwrt-bandix/releases/download/v0.12.10/bandix-0.12.10-r1_x86_64.apk || true
+curl -fL -o "${PKG_DIR}/luci-app-bandix_0.12.11-r1_all.apk" https://github.com/timsaya/luci-app-bandix/releases/download/v0.12.11/luci-app-bandix_0.12.11-r1_all.apk || true
+curl -fL -o "${PKG_DIR}/luci-i18n-bandix-zh-cn_0.12.11-r1_all.apk" https://github.com/timsaya/luci-app-bandix/releases/download/v0.12.11/luci-i18n-bandix-zh-cn_0.12.11-r1_all.apk || true
 
-# 5. 生成本地 APK 索引，并追加配置
+# 5. 生成本地 APK 索引并配置仓库路径
 cd "${IB_DIR}"
 
 if command -v apk >/dev/null 2>&1; then
@@ -56,7 +56,7 @@ EOF
 
 echo "pppoe-settings 已成功写入 ${FILES_DIR}/etc/config/pppoe-settings"
 
-# 7. 执行 ImageBuilder 打包 (关键追加: APK_FLAGS="--allow-untrusted")
+# 7. 执行真正的 ImageBuilder 打包 (补全了缺失的 make 指令)
 echo "========================================="
 echo "开始执行 make image 编译打包..."
 echo "========================================="
@@ -64,7 +64,7 @@ echo "========================================="
 TARGET_PROFILE="generic"
 CUSTOM_PACKAGES_CLEAN=$(echo "$CUSTOM_PACKAGES" | xargs)
 
-# 传入 APK_FLAGS 强制解除第三方离线包签名限制
+# 传入 APK_FLAGS 解除第三方离线包签名限制并执行打包
 make image PROFILE="${TARGET_PROFILE}" PACKAGES="${CUSTOM_PACKAGES_CLEAN}" FILES="files" APK_FLAGS="--allow-untrusted"
 
 echo "========================================="
