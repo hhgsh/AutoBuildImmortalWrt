@@ -10,7 +10,24 @@ echo "Include Docker: $INCLUDE_DOCKER"
 
 echo "Create pppoe-settings"
 mkdir -p  /home/build/immortalwrt/files/etc/config
+mkdir -p packages/
 
+echo "========================================="
+echo "开始拉取第三方 APK 离线安装包到 packages/ ..."
+echo "========================================="
+
+# 1. 下载 quickfile 离线包
+wget -q -P packages/ https://github.com/sbwml/luci-app-quickfile/releases/download/v1.0.8/luci-app-quickfile_1.0.8-r1_all.apk || true
+wget -q -P packages/ https://github.com/sbwml/luci-app-quickfile/releases/download/v1.0.8/luci-i18n-quickfile-zh-cn_1.0.8-r1_all.apk || true
+
+# 2. 下载 bandix 离线包
+wget -q -P packages/ https://github.com/timsaya/openwrt-bandix/releases/download/v0.12.10/bandix-0.12.10-r1_x86_64.apk || true
+wget -q -P packages/ https://github.com/timsaya/luci-app-bandix/releases/download/v0.12.11/luci-app-bandix_0.12.11-r1_all.apk || true
+wget -q -P packages/ https://github.com/timsaya/luci-app-bandix/releases/download/v0.12.11/luci-i18n-bandix-zh-cn_0.12.11-r1_all.apk || true
+
+echo "packages 目录下已就绪的文件："
+ls -la packages/
+echo "========================================="
 # 创建pppoe配置文件 yml传入环境变量ENABLE_PPPOE等 写入配置文件 供99-custom.sh读取
 cat << EOF > /home/build/immortalwrt/files/etc/config/pppoe-settings
 enable_pppoe=${ENABLE_PPPOE}
