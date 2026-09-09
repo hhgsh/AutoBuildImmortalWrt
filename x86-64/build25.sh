@@ -25,9 +25,21 @@ wget -q -P packages/ https://github.com/timsaya/openwrt-bandix/releases/download
 wget -q -P packages/ https://github.com/timsaya/luci-app-bandix/releases/download/v0.12.11/luci-app-bandix_0.12.11-r1_all.apk || true
 wget -q -P packages/ https://github.com/timsaya/luci-app-bandix/releases/download/v0.12.11/luci-i18n-bandix-zh-cn_0.12.11-r1_all.apk || true
 
-echo "packages 目录下已就绪的文件："
+# 2. 为本地 packages 目录下的 .apk 生成 APKINDEX 索引文件 (关键步骤!)
+if command -v apk >/dev/null 2>&1; then
+    apk index -o packages/APKINDEX.tar.gz packages/*.apk 2>/dev/null || true
+fi
+
+# 3. 将本地 packages 路径追加到 repositories.conf 的最前面，让 apk 优先检索本地包
+echo "https://downloads.immortalwrt.org/" > repositories.conf.new
+echo "$(pwd)/packages" >> repositories.conf.new
+cat repositories.conf >> repositories.conf.new 2>/dev/null || true
+mv repositories.conf.new repositories.conf
+
+echo "=== 本地 packages 目录内容 ==="
 ls -la packages/
 echo "========================================="
+
 # 创建pppoe配置文件 yml传入环境变量ENABLE_PPPOE等 写入配置文件 供99-custom.sh读取
 cat << EOF > /home/build/immortalwrt/files/etc/config/pppoe-settings
 enable_pppoe=${ENABLE_PPPOE}
