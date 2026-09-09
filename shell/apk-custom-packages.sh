@@ -1,10 +1,9 @@
 #!/bin/bash
-
 # 官方自带包
 CUSTOM_PACKAGES="$CUSTOM_PACKAGES luci-i18n-ddns-zh-cn luci-i18n-zerotier-zh-cn"
 
-# 第三方离线包（对应在 build25.sh 里下载的文件）
-CUSTOM_PACKAGES="$CUSTOM_PACKAGES quickfile luci-app-quickfile luci-i18n-quickfile-zh-cn"
+# 第三方离线包（只保留真实 apk 包名，去掉多余的 quickfile）
+CUSTOM_PACKAGES="$CUSTOM_PACKAGES luci-app-quickfile luci-i18n-quickfile-zh-cn"
 CUSTOM_PACKAGES="$CUSTOM_PACKAGES bandix luci-app-bandix luci-i18n-bandix-zh-cn"
 # ============= imm 25.12.x仓库外的第三方插件apk==========
 # ============= 若启用 则打开注释 ========================
