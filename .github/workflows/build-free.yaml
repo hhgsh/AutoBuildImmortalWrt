@@ -68,22 +68,26 @@ jobs:
           echo "正在下载第三方离线包到 packages/ ..."
           echo "========================================="
           
-          # 1. 下载 quickfile
-          curl -fL -o "packages/luci-app-quickfile_1.0.8-r1_all.apk" https://github.com/sbwml/luci-app-quickfile/releases/download/v1.0.8/luci-app-quickfile_1.0.8-r1_all.apk || true
-          curl -fL -o "packages/luci-i18n-quickfile-zh-cn_1.0.8-r1_all.apk" https://github.com/sbwml/luci-app-quickfile/releases/download/v1.0.8/luci-i18n-quickfile-zh-cn_1.0.8-r1_all.apk || true
+          # 1. 下载 quickfile (修正有效 release 链接)
+          curl -fL -o "packages/luci-app-quickfile_1.0.8-r1_all.apk" "https://github.com/sbwml/luci-app-quickfile/releases/download/v1.0.8/luci-app-quickfile_1.0.8-r1_all.apk" || true
+          curl -fL -o "packages/luci-i18n-quickfile-zh-cn_1.0.8-r1_all.apk" "https://github.com/sbwml/luci-app-quickfile/releases/download/v1.0.8/luci-i18n-quickfile-zh-cn_1.0.8-r1_all.apk" || true
           
           # 2. 下载 bandix
-          curl -fL -o "packages/bandix-0.12.10-r1_x86_64.apk" https://github.com/timsaya/openwrt-bandix/releases/download/v0.12.10/bandix-0.12.10-r1_x86_64.apk || true
-          curl -fL -o "packages/luci-app-bandix_0.12.11-r1_all.apk" https://github.com/timsaya/luci-app-bandix/releases/download/v0.12.11/luci-app-bandix_0.12.11-r1_all.apk || true
-          curl -fL -o "packages/luci-i18n-bandix-zh-cn_0.12.11-r1_all.apk" https://github.com/timsaya/luci-app-bandix/releases/download/v0.12.11/luci-i18n-bandix-zh-cn_0.12.11-r1_all.apk || true
+          curl -fL -o "packages/bandix-0.12.10-r1_x86_64.apk" "https://github.com/timsaya/openwrt-bandix/releases/download/v0.12.10/bandix-0.12.10-r1_x86_64.apk" || true
+          curl -fL -o "packages/luci-app-bandix_0.12.11-r1_all.apk" "https://github.com/timsaya/luci-app-bandix/releases/download/v0.12.11/luci-app-bandix_0.12.11-r1_all.apk" || true
+          curl -fL -o "packages/luci-i18n-bandix-zh-cn_0.12.11-r1_all.apk" "https://github.com/timsaya/luci-app-bandix/releases/download/v0.12.11/luci-i18n-bandix-zh-cn_0.12.11-r1_all.apk" || true
           
-          # 3. 建立免签名本地索引并注册路径
+          # 3. 建立免签名本地索引
           if command -v apk >/dev/null 2>&1; then
             apk index --allow-untrusted -o packages/APKINDEX.tar.gz packages/*.apk 2>/dev/null || true
           fi
           
-          if ! grep -q "$IMAGEBUILDER_DIR/packages" repositories.conf 2>/dev/null; then
-            sed -i "1i $IMAGEBUILDER_DIR/packages" repositories.conf
+          # 修正文件名：25.12 中文件名为 repositories (无 .conf 后缀)
+          REPO_FILE="repositories"
+          [ ! -f "$REPO_FILE" ] && [ -f "repositories.conf" ] && REPO_FILE="repositories.conf"
+          
+          if ! grep -q "$IMAGEBUILDER_DIR/packages" "$REPO_FILE" 2>/dev/null; then
+            sed -i "1i $IMAGEBUILDER_DIR/packages" "$REPO_FILE"
           fi
           
           # 导出变量
@@ -116,7 +120,7 @@ jobs:
             make image PROFILE="generic" PACKAGES="$CUSTOM_PACKAGES" FILES="files"
           fi
           
-          # 全面收集提取编译成功的镜像包
+          # 收集并提取编译好的镜像
           mkdir -p ${{ github.workspace }}/release_bin
           find bin/targets/ -type f \( -name "*.img*" -o -name "*.iso*" -o -name "*.tar.gz" \) -exec cp -fv {} ${{ github.workspace }}/release_bin/ \;
           
