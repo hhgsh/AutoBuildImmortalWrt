@@ -49,3 +49,24 @@ pppoe_pass="${PPPOE_PASS}"
 EOF
 
 echo "pppoe-settings 已成功写入 ${FILES_DIR}/etc/config/pppoe-settings"
+
+# =========================================================
+# 执行真正的 ImageBuilder 打包 (解决未生成固件的问题)
+# =========================================================
+echo "========================================="
+echo "开始执行 make image 编译打包..."
+echo "========================================="
+
+# 确保 Profile 有默认值
+PROFILE="${PROFILE:-generic}"
+
+# 切换到 ImageBuilder 目录下执行编译
+cd "${IB_DIR}"
+
+# 调用 ImageBuilder 执行打包
+make image PROFILE="${PROFILE}" PACKAGES="${CUSTOM_PACKAGES}" FILES="files"
+
+echo "========================================="
+echo "打包完成，检查编译出的固件文件："
+ls -la bin/targets/x86/64/ || true
+echo "========================================="
