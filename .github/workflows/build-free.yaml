@@ -95,8 +95,12 @@ jobs:
           fi
           
           # 筛选 squashfs-combined-efi 固件
+          # 放宽条件，提取 x86/64 目录下生成的全部 img.gz 和 iso 固件
           mkdir -p ${{ github.workspace }}/release_bin
-          find bin/targets/x86/64/ -type f -name "*squashfs-combined-efi.img.gz" -exec cp -f {} ${{ github.workspace }}/release_bin/ \;
+          find bin/targets/x86/64/ -type f \( -name "*.img.gz" -o -name "*.iso" \) -exec cp -f {} ${{ github.workspace }}/release_bin/ \;
+          
+          echo "=== 提取到的发布文件列表 ==="
+          ls -la ${{ github.workspace }}/release_bin/
 
       - name: Create Release Info
         run: |
