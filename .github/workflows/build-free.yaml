@@ -59,47 +59,68 @@ jobs:
           tar -I zstd -xf imagebuilder.tar.zst -C /tmp/immortalwrt --strip-components=1
           echo "IMAGEBUILDER_DIR=/tmp/immortalwrt" >> $GITHUB_ENV
 
-      - name: Download APK Packages and Export Variables
+      - name: Download APK Packages, Build Index and Export Variables
         run: |
           cd $IMAGEBUILDER_DIR
-          APK_SCRIPT="${{ github.workspace }}/shell/apk-custom-packages.sh"
+          mkdir -p packages
           
+          echo "========================================="
+          echo "正在把第三方离线包精准下载到 ImageBuilder 的 packages 目录..."
+          echo "========================================="
+          
+          # 1. 下载 quickfile
+          wget -q -P packages/ https://github.com/sbwml/luci-app-quickfile/releases/download/v1.0.8/luci-app-quickfile_1.0.8-r1_all.apk || true
+          wget -q -P packages/ https://github.com/sbwml/luci-app-quickfile/releases/download/v1.0.8/luci-i18n-quickfile-zh-cn_1.0.8-r1_all.apk || true
+          
+          # 2. 下载 bandix
+          wget -q -P packages/ https://github.com/timsaya/openwrt-bandix/releases/download/v0.12.10/bandix-0.12.10-r1_x86_64.apk || true
+          wget -q -P packages/ https://github.com/timsaya/luci-app-bandix/releases/download/v0.12.11/luci-app-bandix_0.12.11-r1_all.apk || true
+          wget -q -P packages/ https://github.com/timsaya/luci-app-bandix/releases/download/v0.12.11/luci-i18n-bandix-zh-cn_0.12.11-r1_all.apk || true
+          
+          # 3. 核心步骤：用 apk 生成索引包 APKINDEX.tar.gz
+          if command -v apk >/dev/null 2>&1; then
+            apk index --allow-untrusted -o packages/APKINDEX.tar.gz packages/*.apk 2>/dev/null || true
+          fi
+          
+          # 将本地 packages 路径加到 repositories.conf 最前排
+          echo "$IMAGEBUILDER_DIR/packages" >> repositories.conf
+          
+          # 导入 Shell 配置中的包名变量
+          APK_SCRIPT="${{ github.workspace }}/shell/apk-custom-packages.sh"
           if [ -f "$APK_SCRIPT" ]; then
-            echo "正在运行 shell/apk-custom-packages.sh ..."
             source "$APK_SCRIPT"
             echo "CUSTOM_PACKAGES=$CUSTOM_PACKAGES" >> $GITHUB_ENV
-            echo "已就绪的本地包目录列表:"
-            ls -la packages/
           fi
+          
+          echo "=== 已下载文件与生成的 APKINDEX 索引 ==="
+          ls -la packages/
 
       - name: Build Firmware with build25.sh
         run: |
           cd $IMAGEBUILDER_DIR
           
-          # 拷贝文件及配置
           mkdir -p bin files files/etc/config
           [ -d "${{ github.workspace }}/files" ] && cp -rf ${{ github.workspace }}/files/* files/ 2>/dev/null || true
           [ -d "${{ github.workspace }}/custom" ] && cp -rf ${{ github.workspace }}/custom/* files/etc/config/ 2>/dev/null || true
           [ -f "${{ github.workspace }}/x86-64/imm25.config" ] && cp -f ${{ github.workspace }}/x86-64/imm25.config .config
           
-          export PROFILE="${{ github.event.inputs.profile }}"
+          export PROFILE="generic"
           export CUSTOM_ROUTER_IP="${{ github.event.inputs.custom_router_ip }}"
           export CUSTOM_PACKAGES="${CUSTOM_PACKAGES}"
           
           BUILD_SCRIPT="${{ github.workspace }}/x86-64/build25.sh"
           if [ -f "$BUILD_SCRIPT" ]; then
-            echo "正在运行 x86-64/build25.sh..."
+            echo "运行 x86-64/build25.sh..."
             bash "$BUILD_SCRIPT"
           else
-            make image PROFILE="generic" PACKAGES="$CUSTOM_PACKAGES"
+            make image PROFILE="generic" PACKAGES="$CUSTOM_PACKAGES" FILES="files"
           fi
           
-          # 筛选 squashfs-combined-efi 固件
-          # 放宽条件，提取 x86/64 目录下生成的全部 img.gz 和 iso 固件
+          # 提取消并保存所有生成的镜像包
           mkdir -p ${{ github.workspace }}/release_bin
           find bin/targets/x86/64/ -type f \( -name "*.img.gz" -o -name "*.iso" \) -exec cp -f {} ${{ github.workspace }}/release_bin/ \;
           
-          echo "=== 提取到的发布文件列表 ==="
+          echo "=== 成功提取到的发布固件文件 ==="
           ls -la ${{ github.workspace }}/release_bin/
 
       - name: Create Release Info
@@ -117,6 +138,6 @@ jobs:
           tag_name: Laohu-x86-64-${{ github.event.inputs.luci_version }}
           body_path: ${{ github.workspace }}/router-info.md
           files: |
-            ${{ github.workspace }}/release_bin/*squashfs-combined-efi.img.gz
+            ${{ github.workspace }}/release_bin/*
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
