@@ -117,9 +117,8 @@ jobs:
       - name: Upload Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: Laohu-x86-64
+          tag_name: Laohu-x86-64-${{ github.event.inputs.luci_version }}
           body_path: ${{ github.workspace }}/router-info.md
-          files: |
-            ${{ github.workspace }}/bin/targets/x86/64/*
+          files: ${{ github.workspace }}/release_bin/*combined-efi.img.gz
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
